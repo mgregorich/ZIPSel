@@ -1,0 +1,11 @@
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+*.docx
+*.Rproj
+docs
+*.html
+data/
+output/
+lit/

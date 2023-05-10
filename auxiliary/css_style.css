@@ -1,0 +1,103 @@
+body {
+    margin: auto;
+    color: black;
+    font-family: Verdana;
+    font-size: 11pt;
+    padding: 5px;
+    line-height: 120%;
+    color: #333; 
+    text-align: justify;
+}
+pre {
+    background-color: #ececec;
+    color: #1111111;
+}
+
+h1 a, h2 a, h3 a, h4 a, h5 a { 
+    text-decoration: none;
+    color: #1111111; 
+}
+h1, h2 { font-family: verdana;
+         font-weight: bold;
+          padding-top: :20px; 
+          color: #1111111;
+          margin-top:3ex;
+
+}
+h1 {
+        font-size: 175%;
+        border-bottom: 2px solid #1111111;
+}
+
+h2 {
+        font-size: 135%;
+}
+
+h3 {/*Subtitle*/
+        font-size: 120%;
+        text-align: left;
+        font-weight: bold;
+        margin-bottom:3ex;
+}
+
+h4 { 
+        font-size: 100%;
+        text-align: left;
+        font-weight: bold;
+        margin-bottom:3ex;
+
+}
+
+h5 {
+        font-size: 100%;
+        font-style: italic;
+}
+
+h1.title {
+        font-size: 180%;
+        font-weight: bold;
+        padding-top: 0.2em;
+        padding-bottom: 0.2em;
+        border: none;
+}
+
+h3.subtitle {
+        font-size: 150%;
+        font-weight: bold;
+        padding-top: 0.2em;
+        padding-bottom: 0.2em;
+        border: none;
+}
+
+h4.date { /*Date*/
+        font-size: 120%;
+        color: black;
+}
+h4.author { /*Date*/
+        font-size: 120%;
+        color: black;
+}
+dt code {
+        font-weight: bold;
+}
+dd p {
+        margin-top: 0;
+}
+
+div.main-container {
+  max-width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.shiny-frame{
+  width: 4000px;
+  height: 3800px;
+}
+
+#footer {
+        padding-top: 1em;
+        font-size: 70%;
+        color: gray;
+        text-align: center;
+        }
