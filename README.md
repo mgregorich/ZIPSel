@@ -1,4 +1,4 @@
-<h1 align="center">  The modified non-negative Garrote for zero-inflated data </h1>
+<h1 align="center">  The non-negative Garrote for 'too' many zero-inflated predictors </h1>
  
 ## Background
 Variable selection can be problematic in data obtained from mass spectronomy due to the large number of missing values, posing statistical challenges for standard analysis procedures. The available information on a given variable is usually split into two components: i) a binary indicator of the absence/presence of the entity in the sample and ii) its log2-transformed intensity if detected. We propose an extension of the non-negative Garrote (Breiman 1995) for variable selection in the presence of zero-inflation in high-dimensional data. 
