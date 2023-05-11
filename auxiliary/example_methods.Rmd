@@ -162,7 +162,7 @@ fit1.ridge <- glmnet(as.matrix(dataset[,-1]), dataset$log2eGFR, alpha = 0, lambd
 best_ridge_coef <- coef(cv_ridge, s = cv_ridge$lambda.min)
 penalty_peptides <- abs(best_ridge_coef[str_detect(rownames(best_ridge_coef), "x.")])+ abs(best_ridge_coef[str_detect(rownames(best_ridge_coef), "d.")])
 penalty_clinical <- abs(best_ridge_coef[str_detect(rownames(best_ridge_coef), "x.|d.", negate = T)])[-1]
-penalty <- 1 / c(penalty_clinical, rep(penalty_peptides, 2))
+penalty <- 1 / c(penalty_clinical, rep(penalty_peptides, 2))^1
 
 # Lasso with Ridge-based penalty
 cv_alasso <- cv.glmnet(x = as.matrix(dataset[,-1]), y = dataset$log2eGFR,
@@ -209,7 +209,7 @@ tbl_rlasso %>%
 
 ```{r}
 # Data for Lasso
-dataset <- data.frame(log2eGFR = log2(data_mos$eGFR), age=data_mos$Age, sex=data_mos$Sex, ximp)
+dataset <- data.frame(log2eGFR = log2(data_mos$eGFR), age=data_mos$Age, sex=data_mos$Sex, x=ximp)
 
 # Lasso for selection
 cv_model <- cv.glmnet(as.matrix(dataset[,-1]), dataset$log2eGFR, alpha = 1)

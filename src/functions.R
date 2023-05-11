@@ -148,6 +148,7 @@ protogarrote<-function(data.obj, center.interaction.x=0, scale.interaction.x=1, 
   if(k != ncol(d)) stop("d does not match x in dimensions\n")
   if(n != nrow(d) | n!= length(y)) stop("Not equal sample size in variables\n")
 
+  # Interaction
   if(!is.null(interaction.x)) {
     int.x<-(interaction.x - center.interaction.x)/scale.interaction.x
     clinical <- cbind(clinical, interaction.x)  
@@ -157,14 +158,17 @@ protogarrote<-function(data.obj, center.interaction.x=0, scale.interaction.x=1, 
   }
   
   kclin <- ncol(clinical)
-  
+
   xmat <- as.matrix(cbind(x, d, clinical))  
   if(fit.int) xmat <- as.matrix(cbind(x,  d, x*int.x, d*int.x, clinical))
   if(length(penalties)==1) penalties<-rep(penalties, ncol(xmat))
-  # get lambdas
+  
+  # get number of lambdas
   nl1 <- nlambda[1]
   nl2 <- nlambda[2]
     
+  
+  
   prederr <- rsquare <- prederr2 <- matrix(0, nl1, nl2)
   for(outer.iter in 1:outer){
     folds <- rep(1:cv, each=ceiling(n/10))
@@ -178,11 +182,12 @@ protogarrote<-function(data.obj, center.interaction.x=0, scale.interaction.x=1, 
       y.devel <- y[devel]
       y.test <- y[test]
       
+      # ridge regression
       fit1 <- glmnet(y=y.devel, x=x.devel, family=family, alpha=alpha1, nlambda=nl1, penalty.factor =penalties)
       if(length(fit1$lambda)<nl1) stop("In CV loop ", inner, ", number of evaluated lambdas (", length(fit1$lambda), ") smaller than ", nl1, ". Try nlambda[1] = ",length(fit1$lambda),".\n")
       # second step: positive lasso: easier and safer in a loop  
       for(i in 1:nl1){
-        # lambda1<-lambda$lambda1[i]
+        # X garrote = X*beta_ridge
         beta1 <- coef(fit1)[,i]
         if(!fit.int) {
           partial.eta <- sapply(1:k, function(j) x.devel[,j]*beta1[1+j] + x.devel[,k+j]*beta1[1+k+j])
@@ -196,7 +201,11 @@ protogarrote<-function(data.obj, center.interaction.x=0, scale.interaction.x=1, 
           partial.clinical <- matrix(sapply(1:ncol(clinical), function(j) x.devel[,4*k+j] * beta1[4*k+j+1]), nrow(x.devel), kclin,byrow=FALSE)
         }
         xmat2 <- as.matrix(cbind(partial.eta, partial.clinical))
+        
+        # Nonnegative Garrote: lower.limits ensures positiveness of coeffs, alpha2=0.99???
         fit2 <- glmnet(y=y.devel, x=xmat2, family=family, alpha=alpha2, lower.limits=0, standardize=FALSE, nlambda=nl2)
+        
+        # Garrote coefficients
         for(ii in 1:nl2){
           if(!fit.int){
             beta[,nl2*(i-1)+ii]<-c(coef(fit2)[1,ii], # intercept
@@ -217,7 +226,6 @@ protogarrote<-function(data.obj, center.interaction.x=0, scale.interaction.x=1, 
       } # now we have all nl1*nl2 betas               
       
       # validation: compute prediction error
-      
       for(i in 1:nl1){
         for(ii in 1:nl2){
           yhat.test <- cbind(1,x.test) %*% beta[,nl2*(i-1)+ii]
@@ -228,8 +236,10 @@ protogarrote<-function(data.obj, center.interaction.x=0, scale.interaction.x=1, 
           else rsquare[i,ii] <- 0
         }
       }
-    }
-  }
+    } # inner loop end
+  } # outer loop end
+  
+  
   index<-which(prederr==min(prederr), arr.ind=TRUE)
   if(length(index)>2) index<-tail(index,1)
   se.prederr<-sqrt(prederr2 - prederr**2)
