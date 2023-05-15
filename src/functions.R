@@ -50,6 +50,51 @@ eval_performance <- function(pred, obs){
   return(res)
 }
 
+
+
+simcor.H <- function(k=6, size=c(10,5,8,7,15,50), 
+                     rho=rbind(c(.9,.7), c(.7,.7), c(.7,.2), c(.5,.3), c(.9,.85), c(.3,.2)), power=1,
+                     epsilon=.08, eidim=2){
+  #' Simulating the Hub Matrix (entries filled in using Toeplitz structure)
+  #' Implementation by Hardin et al. (DOI: 10.1214/13-AOAS638)
+  #' k is the number of groups
+  #' size is a vector of length k specifying the size of each group 
+  #' rho is a vector of length k specifying base correlation values
+  #' epsilon <- (1-min(rho) - 0.75*min(tau) ) - .01
+  #' tau_k = (max(rho_k) - min(rho_k) )/ (size_k -2) 
+  #' eidim is the space from which the noise is generated, the smaller the more noise
+  #' power = 2 makes the correlations stay high
+  #'power = 0.5 makes the correlations descent rapidly
+  
+  ndim <- sum(size)# dim of correlation matrix
+  bigcor<- matrix(rep(0, ndim*ndim), ncol=ndim)
+  
+  ### generating the basic correlation matrix
+  for (i in 1:(k) ){
+    
+    cor <- toeplitz(rho.func(rho[i,1],rho[i,2],power,size[i]) )
+    
+    if (i==1){bigcor[1:size[1], 1:size[1]] <- cor}
+    if (i!=1){bigcor[(sum(size[1:(i-1)]) + 1):sum(size[1:i]),
+                     (sum(size[1:(i-1)]) + 1):sum(size[1:i])] <- cor}
+  }
+  diag(bigcor) <- 1 - epsilon
+  
+  return(bigcor)
+  
+  ### adding noise to the correlation matrix
+  # eivect <- c( )
+  # for (i in 1:ndim) {
+  #   ei <- runif(eidim, -1, 1)
+  #   eivect <- cbind(eivect, sqrt(epsilon) * ei / sqrt(sum(ei^2) ) )
+  # }
+  # 
+  # 
+  # bigE <- t(eivect) %*% eivect
+  # cor.nz <- bigcor + bigE
+  # cor.nz
+}
+
 # ========================== NETWORK-BASED GROUP PENALIZATION =========================================
 
 # Obtention of the adjacency matrix using WGCNA
@@ -177,7 +222,7 @@ protogarrote<-function(data.obj, center.interaction.x=0, scale.interaction.x=1, 
       beta<-matrix(0,ncol(xmat)+1,nl1*nl2)
       devel <- (1:n)[folds!=inner]
       test <- (1:n)[folds==inner]
-      x.devel<-xmat[devel,]
+      x.devel <- xmat[devel,]
       x.test <- xmat[test,]
       y.devel <- y[devel]
       y.test <- y[test]
@@ -240,12 +285,11 @@ protogarrote<-function(data.obj, center.interaction.x=0, scale.interaction.x=1, 
   } # outer loop end
   
   
-  index<-which(prederr==min(prederr), arr.ind=TRUE)
+  index<-which(prederr==min(prederr), arr.ind=TRUE)  # MG: only includes now last cv run; why outer loop?
   if(length(index)>2) index<-tail(index,1)
   se.prederr<-sqrt(prederr2 - prederr**2)
   
   # now fit the garrote with all lambda1, lambda2, compute final betas and return object (including which lambda is best)
-  
   beta<-matrix(0,ncol(xmat)+1,nl1*nl2)
   lambda <- matrix(0, nl1, nl2)
   # first step: ridge
@@ -471,7 +515,27 @@ plot.coefficients.protogarrote<-function(obj, order="none", scale=c(1,1,1,1), pl
 }  
 
   
+# ============================== METHODS =======================================
 
 
+perform_ridge_garrote <- function(){
+  
+  
+}
+
+
+perform_ridge_lasso <- function(){
+  
+}
+
+
+perform_lasso_ridge <- function(x, y, ){
+  
+  for(i in 1:cv){
+    fit1.lasso <- glmnet(x, y, alpha = 1, nlambda = 50)
+  }
+}
+  
+  
   
   

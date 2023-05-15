@@ -19,7 +19,7 @@ The following methods are implemented:
 
 **Implementation of the nonnegative Garrote (by Georg Heinze)**
 
-Protogarrote: R software to fit prediction models with or without interactions using high-troughput proteomic biomarkers 
+Protogarrote: R software to fit prediction models with or without interactions using high-throughput proteomic biomarkers 
 
 The following functions are available:
 
@@ -29,6 +29,24 @@ The following functions are available:
 * `plot.coefficients.protogarrote` ... shows the estimated coefficients for the proteomics by means of a plot and a table.
 
 <br>
+
+## Installation
+
+You can install the development version from GitHub:
+
+``` r
+# install.packages("devtools")
+devtools::install_github("mgregorich/ZIPSel")
+```
+
+## Prerequisites
+
+The code uses the statistical software `R` (>= 4.2.3)
+
+## Disclaimer
+
+This repository is still in the development phase.
+
 
 ## References
 Breiman, L. (1995). "Better subset regression using the nonnegative garrote." Technometrics 37(4): 373-384.
