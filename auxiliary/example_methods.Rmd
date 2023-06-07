@@ -9,7 +9,7 @@ output:
     number_sections: true
     keep_md: no
     fig_caption: true
-    code_folding: hide
+    code_folding: show
     toc: true
     toc_depth: 3
     toc_float: 
@@ -92,9 +92,8 @@ dataset <- data.frame(log2eGFR = log2(data_mos$eGFR), age=data_mos$Age, sex=data
 data.obj<-list(x=xt, d=d, clinical=cbind("age"=dataset$age, "sex"=dataset$sex), y=dataset$log2eGFR)
 
 # Ridge-Garrote
-fit.garrote <- protogarrote(data.obj, family="gaussian", cv=10, outer=2, nlambda=c(11,11))
-```
-```{r}
+fit.garrote <- perform_garrote(data.obj, family="gaussian", cv=10, R=2, nlambda=c(11,11))
+
 # Selected variables
 rgarrote.varsel <- names(fit.garrote$fit$coefficients[fit.garrote$fit$coefficients != 0])[-1]
 rgarrote.varsel <- str_remove_all(rgarrote.varsel, "x.|d.")
@@ -152,32 +151,19 @@ tbl_garrote %>%
 
 ```{r}
 # Data
-dataset <- data.frame(log2eGFR = log2(data_mos$eGFR), age=data_mos$Age, sex=data_mos$Sex, xt, d)
+dataset <- data.frame(log2eGFR = log2(data_mos$eGFR), xt, d, age=data_mos$Age, sex=data_mos$Sex)
+data.obj<-list(x=xt, d=d, clinical=cbind("age"=dataset$age, "sex"=dataset$sex), y=dataset$log2eGFR)
 
-# Ridge
-cv_ridge <- cv.glmnet(as.matrix(dataset[,-1]), dataset$log2eGFR, alpha = 0)
-fit1.ridge <- glmnet(as.matrix(dataset[,-1]), dataset$log2eGFR, alpha = 0, lambda = cv_ridge$lambda.min)
-
-# Penalty
-best_ridge_coef <- coef(cv_ridge, s = cv_ridge$lambda.min)
-penalty_peptides <- abs(best_ridge_coef[str_detect(rownames(best_ridge_coef), "x.")])+ abs(best_ridge_coef[str_detect(rownames(best_ridge_coef), "d.")])
-penalty_clinical <- abs(best_ridge_coef[str_detect(rownames(best_ridge_coef), "x.|d.", negate = T)])[-1]
-penalty <- 1 / c(penalty_clinical, rep(penalty_peptides, 2))^1
-
-# Lasso with Ridge-based penalty
-cv_alasso <- cv.glmnet(x = as.matrix(dataset[,-1]), y = dataset$log2eGFR,
-                        type.measure = "mse",
-                        nfold = 10,
-                        alpha = 1,
-                        penalty.factor = penalty,
-                        keep = TRUE)
-fit2.lasso <- glmnet(as.matrix(dataset[,-1]), dataset$log2eGFR, alpha = 1, lambda = cv_alasso$lambda.min)
-pred.lasso <- c(predict.glmnet(fit2.lasso, s=cv_alasso$lambda.min, newx=as.matrix(dataset[,-1])))
+# Adaptive lasso
+fit.alasso <- perform_alasso(data.obj=data.obj, family = "gaussian", nlambda = c(11,11), 
+                             cv=10, R=1, alpha1 = 0, alpha2 = 1)
+pred.lasso <- fit.alasso$fit$fitted.values
+#pred.lasso <- predict_garrote(fit.alasso$glmnet.fit.alasso, s=fit.alasso$fit$lambda.min["alasso"], newx=dataset))
 ```
 
 ```{r}
 # Selected variables
-rlasso.varsel <- names(coef(fit2.lasso)[which(coef(fit2.lasso) != 0),])[-1]
+rlasso.varsel <- names(fit.alasso$fit$coefficients)[which(fit.alasso$fit$coefficients != 0)][-1]
 rlasso.varsel <- str_remove_all(rlasso.varsel, "x.|d.")
 list.varsel$rlasso <- rlasso.varsel
 ```
@@ -210,33 +196,64 @@ tbl_rlasso %>%
 ```{r}
 # Data for Lasso
 dataset <- data.frame(log2eGFR = log2(data_mos$eGFR), age=data_mos$Age, sex=data_mos$Sex, x=ximp)
+data.obj<-list(x=ximp, d=d, clinical=cbind("age"=dataset$age, "sex"=dataset$sex), y=dataset$log2eGFR)
 
 # Lasso for selection
-cv_model <- cv.glmnet(as.matrix(dataset[,-1]), dataset$log2eGFR, alpha = 1)
-fit1.lasso <- glmnet(as.matrix(dataset[,-1]), dataset$log2eGFR, alpha = 1, lambda = cv_model$lambda.min)
-
-# Data for Ridge
-nonzero.coefs <- rownames(coef(fit1.lasso))[coef(fit1.lasso)[,1]!=0]
-nonzero.peps <- str_remove_all(nonzero.coefs[str_detect(nonzero.coefs, "x.")], "x.")
-xt_sub <- xt[,colnames(xt) %in% paste0("x.", nonzero.peps)]
-d_sub <- d[,colnames(d) %in% paste0("d.", nonzero.peps)]
-dataset <- data.frame(log2eGFR = log2(data_mos$eGFR), age=data_mos$Age, sex=data_mos$Sex, x=xt_sub,  d=d_sub)
-
-# Ridge for add. shrinkage
-cv_ridge <- cv.glmnet(x = as.matrix(dataset[,-1]), y = dataset$log2eGFR,
-                        type.measure = "mse",
-                        nfold = 10,
-                        alpha = 0,
-                        keep = TRUE)
-fit2.ridge <- glmnet(as.matrix(dataset[,-1]), dataset$log2eGFR, alpha = 0, lambda = cv_ridge$lambda.min)
-pred.ridge <- c(predict.glmnet(fit2.ridge, s=cv_ridge$lambda.min, type = "response", newx=as.matrix(dataset[,-1])))
+# Adaptive lasso
+fit.lridge <- perform_lridge(data.obj = data.obj, family = "gaussian", nlambda = c(11,11), cv=10, R=2, alpha1 = 1, alpha2 = 0)
+pred.lridge <- fit.lridge$fit$fitted.values
 ```
 
 ```{r}
 # Selected variables
-lridge.varsel <- names(coef(fit1.lasso)[which(coef(fit1.lasso) != 0),])[-1]
+lridge.varsel <- names(fit.lridge$fit$coefficients)[which(fit.lridge$fit$coefficients != 0)][-1]
 lridge.varsel <- str_remove_all(lridge.varsel, "x.|d.")
 list.varsel$lridge <- lridge.varsel
+```
+
+```{r, fig.align='center', fig.height=4, fig.width=6, fig.cap="Calibration curve of the observed and the fitted values obtained by Lasso-Ridge"}
+ggplot(NULL, aes(pred.lridge, dataset$log2eGFR))+
+  geom_point()+
+  geom_smooth()+
+  geom_abline(intercept=0, slope=1) +
+  scale_x_continuous("Fitted values") +
+  theme_bw()
+```
+
+<br>
+
+Performance measures
+```{r}
+pred <- pred.lridge
+obs <- dataset$log2eGFR
+tbl_lridge <- eval_performance(pred, obs)
+
+tbl_lridge %>%
+  kbl(caption="Performance measures of the Lasso-Ridge model", escape = F, row.names = F, digits = 2) %>%
+  kable_classic(full_width = T, html_font = "Calibri")%>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = F, position = "left",fixed_thead = T)
+```
+
+
+## Ridge
+
+```{r}
+# Data
+dataset <- data.frame(log2eGFR = log2(data_mos$eGFR), age=data_mos$Age, sex=data_mos$Sex, xt, d)
+
+# Ridge
+cv_ridge <- cv.glmnet(as.matrix(dataset[,-1]), dataset$log2eGFR, alpha = 0)
+fit.ridge <- glmnet(as.matrix(dataset[,-1]), dataset$log2eGFR, alpha = 0, lambda = cv_ridge$lambda.min)
+pred.ridge <- c(predict.glmnet(fit.ridge, s=cv_ridge$lambda.min, type = "response", newx=as.matrix(dataset[,-1])))
+
+```
+
+
+```{r}
+# Selected variables
+ridge.varsel <- names(coef(fit.ridge)[which(coef(fit.ridge) != 0),])[-1]
+ridge.varsel <- str_remove_all(ridge.varsel, "x.|d.")
+list.varsel$ridge <- ridge.varsel
 ```
 
 ```{r, fig.align='center', fig.height=4, fig.width=6, fig.cap="Calibration curve of the observed and the fitted values obtained by Lasso-Ridge"}
@@ -254,55 +271,37 @@ Performance measures
 ```{r}
 pred <- pred.ridge
 obs <- dataset$log2eGFR
-tbl_lridge <- eval_performance(pred, obs)
+tbl_ridge <- eval_performance(pred, obs)
 
-tbl_lridge %>%
-  kbl(caption="Performance measures of the Lasso-Ridge model", escape = F, row.names = F, digits = 2) %>%
+tbl_ridge %>%
+  kbl(caption="Performance measures of the Ridge model", escape = F, row.names = F, digits = 2) %>%
   kable_classic(full_width = T, html_font = "Calibri")%>%
   kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = F, position = "left",fixed_thead = T)
 ```
 
-## Network-based group penalization
 
-```{r, results='hide'}
-# Data 
-dataset <- data.frame(log2eGFR = log2(data_mos$eGFR), age=data_mos$Age, sex=data_mos$Sex, ximp)
+## Lasso
 
-# WGCNA
-n_clin=2
-nodes=c(1:ncol(ximp))
-coef.cv=predict.fit=modules=ncluster=NULL
-powers <- c(seq(1,20,1))
-R_sq = pickSoftThreshold(ximp, powerVector = powers, networkType = 'signed')
-power <- min(R_sq$fitIndices[which.max(R_sq$fitIndices[,2]),1],R_sq$powerEstimate,min(which(R_sq$fitIndices[,2]>0.5)), na.rm=T) 
-adjacency = adjacency(ximp, power = power,type='signed')
+```{r}
+# Data for Lasso
+dataset <- data.frame(log2eGFR = log2(data_mos$eGFR), age=data_mos$Age, sex=data_mos$Sex, x=ximp)
 
-# Clustering
-clusters=GetClusters(adjacency,nodes, ximp, method[1])
-modules<-cbind(modules,clusters[,2])
-ncluster<-c(ncluster,length(unique(clusters[,2])))
-clusters0=as.numeric(clusters[,2])
-clusters0[which(clusters0==0)]=max(clusters0)+1
-result_list <- list()
-clusters0 <- c(rep(max(clusters0)+1, n_clin), clusters0)
-res_clust <- data.frame(var=c('age', 'sex', colnames(ximp)), cluster=clusters0)
-
-# Group lasso
-cv.fit.oem <- cv.oem(as.matrix(dataset[,-1]),dataset$log2eGFR, nlambda=150, groups=clusters0, penalty = "grp.lasso", nfolds=10)
-fit.oem <-  oem(as.matrix(dataset[,-1]), dataset$log2eGFR, groups = clusters0, penalty = "grp.lasso", lambda = cv.fit.oem$lambda.min, tol = 1e-10)
-pred.oem <- c(predict(fit.oem, s=cv.fit.oem$lambda.min, type = "response", newx=as.matrix(dataset[,-1])))
+# Lasso for selection
+cv_lasso <- cv.glmnet(as.matrix(dataset[,-1]), dataset$log2eGFR, alpha = 1)
+fit.lasso <- glmnet(as.matrix(dataset[,-1]), dataset$log2eGFR, alpha = 1, lambda = cv_lasso$lambda.min)
+pred.lasso <- c(predict.glmnet(fit.lasso, s=cv_lasso$lambda.min, newx=as.matrix(dataset[,-1])))
 
 ```
 
 ```{r}
 # Selected variables
-grouplasso.varsel <- names(fit.oem$beta$grp.lasso[which(fit.oem$beta$grp.lasso != 0),])[-1]
-grouplasso.varsel <- str_remove_all(grouplasso.varsel, "x.|d.")
-list.varsel$grouplasso <- grouplasso.varsel
+lasso.varsel <- names(coef(fit.lasso)[which(coef(fit.lasso) != 0),])[-1]
+lasso.varsel <- str_remove_all(lasso.varsel, "x.|d.")
+list.varsel$lasso <- lasso.varsel
 ```
 
-```{r, fig.align='center', fig.height=4, fig.width=6, fig.cap="Calibration curve of the observed and the fitted values obtained by network-based group penalization"}
-ggplot(NULL, aes(pred.oem, dataset$log2eGFR))+
+```{r, fig.align='center', fig.height=4, fig.width=6, fig.cap="Calibration curve of the observed and the fitted values obtained by Ridge-Lasso"}
+ggplot(NULL, aes(pred.lasso, dataset$log2eGFR))+
   geom_point()+
   geom_smooth()+
   geom_abline(intercept=0, slope=1) +
@@ -314,63 +313,28 @@ ggplot(NULL, aes(pred.oem, dataset$log2eGFR))+
 
 Performance measures
 ```{r}
-pred <- pred.oem
+pred <- pred.lasso
 obs <- dataset$log2eGFR
-tbl_oem <- eval_performance(pred, obs)
+tbl_lasso <- eval_performance(pred, obs)
 
-tbl_oem %>%
-  kbl(caption="Performance measures of the network-based froup penalization model", escape = F, row.names = F, digits = 2) %>%
+tbl_lasso %>%
+  kbl(caption="Performance measures of the Lasso model", escape = F, row.names = F, digits = 2) %>%
   kable_classic(full_width = T, html_font = "Calibri")%>%
   kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = F, position = "left",fixed_thead = T)
 ```
 
 
-## Multi-univariable modelling
+# Results
 
 ```{r}
-# Data
-dataset <- data.frame(log2eGFR = log2(data_mos$eGFR), age=data_mos$Age, sex=data_mos$Sex, x=xt)
-
-# Univariable models
-tmp <- apply(dataset[,-1], 2, function(x) coef(lm(dataset$log2eGFR ~ x))[2])
-pred <- rowSums(dataset[,-1] * tmp)
-
-# Final univariable model
-fit.multi <- lm(dataset$log2eGFR~pred)
-```
-
-
-```{r, fig.align='center', fig.height=4, fig.width=6, fig.cap="Calibration curve of the observed and the fitted values obtained by network-based group penalization"}
-ggplot(NULL, aes(fit.multi$fitted, dataset$log2eGFR))+
-  geom_point()+
-  geom_smooth()+
-  geom_abline(intercept=0, slope=1) +
-  scale_x_continuous("Fitted values") +
-  theme_bw()
-```
-
-<br>
-
-Performance measures
-```{r}
-pred <- fit.multi$fitted
-obs <- dataset$log2eGFR
-tbl_multi <- eval_performance(pred, obs)
-
-tbl_multi %>%
-  kbl(caption="Performance measures of the network-based froup penalization model", escape = F, row.names = F, digits = 2) %>%
-  kable_classic(full_width = T, html_font = "Calibri")%>%
-  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = F, position = "left",fixed_thead = T)
-```
-
-
-## Results
-
-```{r}
-tbl_res <- data.frame(rbind(tbl_garrote, tbl_rlasso, tbl_lridge, tbl_oem, tbl_multi)) 
+tbl_res <- data.frame(rbind(tbl_garrote, tbl_rlasso, tbl_lridge, 
+                            tbl_oem, tbl_multi,
+                            tbl_lasso, tbl_ridge)) 
 
 tbl_res %>%
-  mutate("method"=c("ridge-garrote", "ridge-lasso", "lasso-ridge", "network-based penalization", "multiple univariable models")) %>%
+  mutate("method"=c("ridge-garrote", "ridge-lasso", "lasso-ridge", 
+                    "network-based penalization", "multiple univariable models", 
+                    "lasso", "ridge")) %>%
   relocate(method, .before = 1) %>%
   kbl(caption="Performance measures of the network-based froup penalization model", escape = F, row.names = F, digits = 3) %>%
   kable_classic(full_width = T, html_font = "Calibri")%>%
