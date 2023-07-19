@@ -390,34 +390,89 @@ plot.coefficients.protogarrote<-function(obj, order="none", scale=c(1,1,1,1), pl
   
 # ============================== METHODS =======================================
 
-perform_ridge <- function(data.obj, penalties=1, family="gaussian", nlambda=c(10,10), target.L1norm=20, cv=10, R=2, alpha1=0, alpha2=1){
+perform_penreg <- function(data.obj, penalties=1, family="gaussian", penalty="combined", cv=10, R=2, nl1=10, alpha1=0, pf=c(1,2)){
+  x<-data.obj[["x"]]
   u<-data.obj[["u"]]
   d<-data.obj[["d"]]
   y<-data.obj[["y"]]
   clinical<-data.frame("y"=y, data.obj[["clinical"]])
-  udmat <- as.matrix(cbind(u, d))  
   
   n<-nrow(u)
   k<-ncol(u)
   kclin <- ncol(clinical)
   
-  pfvector <- rep(1, 2*k)
-  if(penalty=="component"){pfvector <- rep(pf, each=k)}
+  if(alpha1==1){
+    xmat <- x
+    pfvector <- rep(1, k)
+  }else{
+    xmat <- as.matrix(cbind(u, d))  
+    pfvector <- rep(1, 2*k)
+    if(penalty=="component"){pfvector <- rep(pf, each=k)}
+  }
   
-  prederr <- rsquare <- prederr2 <- matrix(0, nl1, nl2)
-  for(outer in 1:R){
-    folds <- sample(rep(1:cv, ceiling(n/cv)))[1:n]
-    
+  # (0) Clinical offset
+  fit.clin <- glm(y~., data=clinical, family="gaussian")
+  clin_offset_coefs <- fit.clin$coefficients[-1]
+  clin_offset <- apply(clinical %>% select(-y),2,to_numeric)%*% clin_offset_coefs
+  
+  # (1) CV Ridge model with offset
+  lambdas <- cvmerror <- matrix(0, R, nl1)
+  cv_ridge <- cv.glmnet(x=xmat, y=y, alpha = alpha1, standardize=FALSE, offset = clin_offset, penalty.factor=pfvector, nfolds = cv, nlambda=nl1)
+  lambdas[1, ] <- cv_ridge$lambda
+  cvmerror[1, ] <- cv_ridge$cvm
+  
+
+  for(outer in 2:R){
+    set.seed(outer)
     # (0) Clinical offset
     fit.clin <- glm(y~., data=clinical, family="gaussian")
     clin_offset_coefs <- fit.clin$coefficients[-1]
-    clin_offset <- apply(c.train %>% select(-y),2,to_numeric)%*% clin_offset_coefs
+    clin_offset <- apply(clinical %>% select(-y),2,to_numeric)%*% clin_offset_coefs
     
     # (1) CV Ridge model with offset
-    cv_ridge <- cv.glmnet(x=udmat %>% select(-c(log2eGFR, age, sex, preds)) %>% as.matrix(), y=udmat$log2eGFR, 
-                          alpha = 0, standardize=FALSE, offset = clin_offset, penalty.factor=pfvector)
-    fit.ridge <- cv_ridge$glmnet.fit
+    set.seed(outer)
+    cv_ridge <- cv.glmnet(x=xmat, y=y, alpha = alpha1, standardize=FALSE,
+                          offset = clin_offset, penalty.factor=pfvector, nfolds = cv, lambda=lambdas[outer-1,])
+    lambdas[outer,] <- cv_ridge$lambda
+    cvmerror[outer,] <- cv_ridge$cvm
+    beta <- coef(cv_ridge$glmnet.fit)
   }
+  prederror <- colSums(cvmerror)/R
+  index <- which.min(prederror)
+  lambda.min <- lambdas[R, index]
+  fit.ridge <- cv_ridge$glmnet.fit
+  fitted.values <- cbind(1,xmat) %*% beta[,index] + clin_offset
+  
+  res<-list(call=match.call(), family=family, lambda=lambdas, coefficients=beta[,index], glmnet.fit.ridge=fit.ridge, 
+            k=k, kclin=kclin, df=df, cv.pred.err=prederror, se.pred.err=0, 
+            fit=list(xmat=xmat, lambda=lambdas, lambda.min=lambda.min, 
+                     clin_offset=clin_offset, clin_offset_coefs=clin_offset_coefs,
+                     coefficients=beta[,index], beta=beta,
+                     index.lambda.min=index, 
+                     fitted.values=fitted.values))
+  attr(res,"class")<-"ridge"
+  return(res)
+}
+
+predict_penreg<-function(obj, newdata, type="link", model="ridge"){
+  x<-newdata[["x"]]
+  u<-newdata[["u"]]
+  d<-newdata[["d"]]
+  clinical <- newdata[["clinical"]]
+  
+  if(model=="ridge"){
+    xmat<-cbind(u,d)
+  }else{
+    xmat<-x
+  }
+
+  new_offset <- apply(clinical,2,to_numeric)%*% obj$fit$clin_offset_coefs
+  x <-cbind(1, xmat[,names(obj$fit$coefficients[obj$fit$coefficients !=0])[-1]])
+  beta <- obj$fit$coefficients[obj$fit$coefficients !=0]
+  linpred <- x %*% beta + new_offset
+  
+  if(type=="response" & obj$family=="binomial") linpred <- plogis(linpred)
+  return(linpred)
 }
 
 

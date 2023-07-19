@@ -25,7 +25,8 @@ rm(list=ls())
 
 pacman::p_load(ggplot2, parallel, future.apply, stringr, 
                dplyr, tidyverse, tableone, concreg, gt,
-               glmnet, patchwork, ranger, tuneRanger)
+               glmnet, patchwork, ranger, tuneRanger, RColorBrewer, ggvenn)
+
 source(here::here("src","functions.R"))
 
 ```
@@ -67,7 +68,7 @@ data_mos$eGFR <- as.numeric(data_mos$eGFR)
 data_mos$log2eGFR <- log(data_mos$eGFR, 2)
 marker.vars <- colnames(data_mos[,!colnames(data_mos) %in% c("fidAuswertung",clin.vars)])
 
-table_vars <- data.frame(print(CreateTableOne(vars=c("Age","Sex", "eGFR", "HF"), data=data_mos), printToggle=F))
+table_vars <- data.frame(print(CreateTableOne(vars=c("Age","Sex", "eGFR"), data=data_mos), printToggle=F))
 list.str <- strsplit(gsub("[()]", "", table_vars[which(str_detect(rownames(table_vars), "mean")),]), "\\s+")
 table_vars[which(str_detect(rownames(table_vars), "mean")),] <- unlist(lapply(list.str, function(x) paste0(x[1], " \U00B1 ", x[2])))
 
@@ -138,11 +139,11 @@ Example of data transformation:
 ```{r}
 #| label: fig-example
 #| fig-cap: "Example of a single peptide from the MOsaique dataset displaying the effects of the data transformation and the data split into the continous U and the binary component D. Original data is the only panel without the log2-transformation."
-p1 <- data.frame("intensity"=x[,10]) %>% ggplot(aes(x=intensity)) + geom_histogram(col="black", fill="grey89") + 
+p1 <- data.frame("intensity"=x[,10]) %>% ggplot(aes(x=intensity)) + geom_histogram(col="black", fill="grey89", bins=30) + 
   theme_light() + ggtitle("Original data X")
-p2 <- data.frame("intensity"=ximp[,10]) %>% ggplot(aes(x=intensity)) + geom_histogram(col="black", fill="grey89") + 
+p2 <- data.frame("intensity"=ximp[,10]) %>% ggplot(aes(x=intensity)) + geom_histogram(col="black", fill="grey89", bins=30) + 
   theme_light() + ggtitle("Transformed data X")
-p3 <- data.frame("intensity"=u[,10]) %>% ggplot(aes(x=intensity)) + geom_histogram(col="black", fill="grey89") + 
+p3 <- data.frame("intensity"=u[,10]) %>% ggplot(aes(x=intensity)) + geom_histogram(col="black", fill="grey89", bins=30) + 
   theme_light() + ggtitle("Continuous component U")
 p4 <- data.frame("intensity"=to_factor(d[,10])) %>% ggplot(aes(x=intensity)) + geom_bar(col="black", fill="grey89") + 
   theme_light()+ ggtitle("Binary component D")
@@ -156,39 +157,30 @@ p4 <- data.frame("intensity"=to_factor(d[,10])) %>% ggplot(aes(x=intensity)) + g
 
 ```{r}
 # Data
-dataset <- data.frame(log2eGFR = log2(data_mos$eGFR), age=data_mos$Age, sex=data_mos$Sex, u, d, preds=NA)
+data.obj <- list("y"=data_mos$log2eGFR, "clinical"=c, x=ximp, u=u, d=d, preds=NA)
 
 # CV Predictions
 for(i in 1:ncv){
-  data.train <- dataset[(1:n)[(folds!=i)],]
-  data.test <- dataset[(1:n)[(folds==i)],]
+  obj.train <- list("y"=data.obj$y[(1:n)[folds!=i]], "clinical"=data.obj$clinical[(1:n)[folds!=i],], 
+                "x"=data.obj$x[(1:n)[folds!=i],], "u"=data.obj$u[(1:n)[folds!=i],], "d"=data.obj$d[(1:n)[folds!=i],])
+  obj.test <- list("y"=data.obj$y[(1:n)[folds==i]], "clinical"=data.obj$clinical[(1:n)[folds==i],], 
+                "x"=data.obj$x[(1:n)[folds==i],], "u"=data.obj$u[(1:n)[folds==i],], "d"=data.obj$d[(1:n)[folds==i],])
   
   # Ridge
-  fit.clin <- glm(log2eGFR~age+sex, data=data.train)
-  clin_offset_train <- predict(fit.clin, newdata = data.train, type = "response")
-  cv_ridge <- cv.glmnet(x=data.train %>% select(-c(log2eGFR, age, sex, preds)) %>% as.matrix(), y=data.train$log2eGFR, 
-                        alpha = 0, standardize=FALSE, offset = clin_offset_train)
-  fit.ridge <- cv_ridge$glmnet.fit
+  fit.ridge.cv <- perform_penreg(obj.train, family="gaussian", cv=ncv, R=nR, penalty = "combined")
   
-  # Prediction
-  clin_offset_test <- predict(fit.clin, newdata = data.test, type = "response")
-  dataset[(1:n)[(folds==i)],]$preds <- predict.glmnet(fit.ridge, s=cv_ridge$lambda.min, 
-                                                      newx=data.test %>% select(-c(log2eGFR, age, sex, preds)) %>% as.matrix(), 
-                                                      type = "response", newoffset = clin_offset_test)[,1]
+  # Predictions
+  data.obj$preds[(1:n)[folds==i]] <- predict_penreg(obj=fit.ridge.cv, newdata=obj.test, model="ridge")
 }
 
 # Performance
-pred.ridge <- dataset$preds
-obs <- dataset$log2eGFR
+pred.ridge <-data.obj$preds
+obs <- data_mos$log2eGFR
 tbl_ridge <- eval_performance(pred.ridge, obs)
 
 # Final model
-fit.clin <- glm(log2eGFR~age+sex, data=dataset)
-clin_offset <- predict(fit.clin, newdata = dataset, type = "response")
-cv_ridge <- cv.glmnet(x=dataset %>% select(-c(log2eGFR, age, sex, preds)) %>% as.matrix(), y=dataset$log2eGFR, 
-                      alpha = 0, standardize=FALSE, offset = clin_offset)
-fit.ridge <- cv_ridge$glmnet.fit
-coef.ridge <- coef(fit.ridge, s=cv_ridge$lambda.min)
+fit.ridge <- perform_penreg(data.obj = data.obj, family="gaussian", cv=ncv, R=nR)
+coef.ridge <- fit.ridge$fit$coefficients
 
 # Variable selection
 ridge.varsel <- rownames(coef.ridge)[which(coef.ridge != 0)][-1]
@@ -200,9 +192,10 @@ list.varsel$ridge <- ridge.varsel[!duplicated(ridge.varsel)]
 #| label: fig-ridge 
 #| fig-cap: "Calibration curve of the observed and the fitted values obtained by ridge" 
 
-ggplot(NULL, aes(pred.ridge, dataset$log2eGFR)) + 
+ggplot(NULL, aes(pred.ridge, data_mos$log2eGFR)) + 
   geom_point() +
-  geom_smooth() +   
+  geom_smooth(method = "gam", 
+              formula = y ~ s(x, bs = "cs", fx = TRUE, k = 20)) +   
   geom_abline(intercept=0, slope=1) +  
   scale_x_continuous("Fitted values") + 
   theme_bw()
@@ -212,7 +205,7 @@ ggplot(NULL, aes(pred.ridge, dataset$log2eGFR)) +
 #| label: fig-ridgecoef 
 #| fig-cap: "Component-specific coefficients of the ridge regression model ordered by D and U, respectively." 
 
-tbl_coef_ridge <- data.frame("peptide"=str_remove_all(rownames(coef.ridge)[2:(p+1)], "u.|d."), "U"=coef.ridge[2:(p+1),], "D"=coef.ridge[(p+2):(2*p+1),]) 
+tbl_coef_ridge <- data.frame("peptide"=str_remove_all(names(coef.ridge)[2:(p+1)], "u.|d."), "U"=coef.ridge[2:(p+1)], "D"=coef.ridge[(p+2):(2*p+1)]) 
 
 p1 <- tbl_coef_ridge %>%
   arrange(D) %>%
@@ -262,53 +255,45 @@ p1 + p2 + p3
 ## Lasso
 
 ```{r}
-# Data for Lasso
-dataset <- data.frame(log2eGFR = log2(data_mos$eGFR), age=data_mos$Age, sex=data_mos$Sex, x=ximp, preds=NA)
+# Data
+data.obj <- list("y"=data_mos$log2eGFR, "clinical"=c, x=ximp, u=u, d=d, preds=NA)
 
 # CV Predictions
 for(i in 1:ncv){
-  data.train <- dataset[(1:n)[(folds!=i)],]
-  data.test <- dataset[(1:n)[(folds==i)],]
-
-  # Lasso for selection
-  fit.clin <- glm(log2eGFR~age+sex, data=data.train)
-  clin_offset_train <- predict(fit.clin, newdata = data.train, type = "response")
-  cv_lasso <- cv.glmnet(x=data.train %>% select(-c(log2eGFR, age, sex, preds)) %>% as.matrix(), y=data.train$log2eGFR, 
-                      alpha = 1, standardize=FALSE, offset = clin_offset_train)
-  fit.lasso <- cv_lasso$glmnet.fit
-
-  # Prediction
-  clin_offset_test <- predict(fit.clin, newdata = data.test, type = "response")
-  dataset$preds[(1:n)[folds==i]] <- predict.glmnet(fit.lasso, s=cv_lasso$lambda.min, 
-                                                  newx=data.test %>% select(-c(log2eGFR, age, sex, preds)) %>% as.matrix(),
-                                                  type = "response", newoffset = clin_offset_test)[,1]
+  obj.train <- list("y"=data.obj$y[(1:n)[folds!=i]], "clinical"=data.obj$clinical[(1:n)[folds!=i],], 
+                "x"=data.obj$x[(1:n)[folds!=i],], "u"=data.obj$u[(1:n)[folds!=i],], "d"=data.obj$d[(1:n)[folds!=i],])
+  obj.test <- list("y"=data.obj$y[(1:n)[folds==i]], "clinical"=data.obj$clinical[(1:n)[folds==i],], 
+                "x"=data.obj$x[(1:n)[folds==i],], "u"=data.obj$u[(1:n)[folds==i],], "d"=data.obj$d[(1:n)[folds==i],])
+  
+  # Lasso
+  fit.lasso.cv <- perform_penreg(obj.train, family="gaussian", alpha1=1, cv=ncv, R=nR, penalty = "combined")
+  
+  # Predictions
+  data.obj$preds[(1:n)[folds==i]] <- predict_penreg(obj=fit.lasso.cv, newdata=obj.test, model="lasso")
 }
 
 # Performance
-pred.lasso <- dataset$preds
-obs <- dataset$log2eGFR
+pred.lasso <-data.obj$preds
+obs <- data_mos$log2eGFR
 tbl_lasso <- eval_performance(pred.lasso, obs)
 
 # Final model
-fit.clin <- glm(log2eGFR~age+sex, data=dataset)
-clin_offset <- predict(fit.clin, newdata = dataset, type = "response")
-cv_lasso <- cv.glmnet(x=dataset %>% select(-c(log2eGFR, age, sex, preds)) %>% as.matrix(), y=dataset$log2eGFR, 
-                    alpha = 1, standardize=FALSE, offset = clin_offset)
-fit.lasso <- cv_lasso$glmnet.fit
-coef.lasso <- coef(fit.lasso, s=cv_lasso$lambda.min)
-  
+fit.lasso <- perform_penreg(data.obj = data.obj, family="gaussian", cv=ncv, R=nR, alpha1 = 1)
+coef.lasso <- fit.lasso$fit$coefficients
+
 # Variable selection
 lasso.varsel <- rownames(coef.lasso)[which(coef.lasso != 0)][-1]
-lasso.varsel <- str_remove_all(lasso.varsel, "x.")
-list.varsel$lasso <- lasso.varsel
+lasso.varsel <- str_remove_all(lasso.varsel, "u.|d.")
+list.varsel$lasso <- lasso.varsel[!duplicated(lasso.varsel)]
 ```
 
 ```{r}
 #| label: fig-lasso
 #| fig-cap: "Calibration curve of the observed and the fitted values obtained by lasso"
-ggplot(NULL, aes(pred.lasso, dataset$log2eGFR))+
+ggplot(NULL, aes(pred.lasso, data_mos$log2eGFR))+
   geom_point()+
-  geom_smooth()+
+  geom_smooth(method = "gam", 
+              formula = y ~ s(x, bs = "cs", fx = TRUE, k = 20))+
   geom_abline(intercept=0, slope=1) +
   scale_x_continuous("Fitted values") +
   theme_bw()
@@ -316,7 +301,7 @@ ggplot(NULL, aes(pred.lasso, dataset$log2eGFR))+
 ```{r}
 #| label: fig-lassocoef 
 #| fig-cap: "Coefficients of the lasso regression model ordered by the magnitude." 
-tbl_coef_lasso <- data.frame("peptide"=str_remove_all(rownames(coef.lasso)[2:(p+1)], "x."), "coef"=coef.lasso[2:(p+1),]) 
+tbl_coef_lasso <- data.frame("peptide"=str_remove_all(names(coef.lasso)[2:(p+1)], "x."), "coef"=coef.lasso[2:(p+1)]) 
 
 p1 <- tbl_coef_lasso %>%
   arrange(coef) %>%
@@ -367,8 +352,7 @@ for(i in 1:ncv){
 
 # Performance 
 pred.lridge <- data.obj$preds
-obs <- data.obj$y
-tbl_lridge <- eval_performance(pred=pred.lridge, obs=obs)
+tbl_lridge <- eval_performance(pred=pred.lridge, obs=data.obj$y)
 
 # Final model
 fit.lridge <- perform_lridge(data.obj = data.obj, family="gaussian", cv=ncv, R=nR, nlambda=c(10,10))
@@ -383,9 +367,10 @@ list.varsel$lridge <- lridge.varsel
 ```{r}
 #| label: fig-lridge
 #| fig-cap: "Calibration curve of the observed and the fitted values obtained by lasso-ridge"
-ggplot(NULL, aes(pred.lridge, dataset$log2eGFR))+
+ggplot(NULL, aes(pred.lridge, data.obj$y))+
   geom_point()+
-  geom_smooth()+
+  geom_smooth(method = "gam", 
+              formula = y ~ s(x, bs = "cs", fx = TRUE, k = 20))+
   geom_abline(intercept=0, slope=1) +
   scale_x_continuous("Fitted values") +
   theme_bw()
@@ -464,8 +449,7 @@ for(i in 1:ncv){
 
 # Performance 
 pred.rlasso <- data.obj$preds
-obs <- data.obj$y
-tbl_rlasso <- eval_performance(pred=pred.rlasso, obs=obs)
+tbl_rlasso <- eval_performance(pred=pred.rlasso, obs=data.obj$y)
 
 # Final model
 fit.rlasso <- perform_rlasso(data.obj = data.obj, family="gaussian", cv=ncv, R=nR, nlambda=c(10,10))
@@ -480,9 +464,10 @@ list.varsel$rlasso <- rlasso.varsel
 ```{r}
 #| label: fig-ridgelasso
 #| fig-cap: "Calibration curve of the observed and the fitted values obtained by ridge-lasso"
-ggplot(NULL, aes(pred.rlasso, obs))+
+ggplot(NULL, aes(pred.rlasso, data.obj$y))+
   geom_point()+
-  geom_smooth()+
+  geom_smooth(method = "gam", 
+              formula = y ~ s(x, bs = "cs", fx = TRUE, k = 20))+
   geom_abline(intercept=0, slope=1) +
   scale_x_continuous("Fitted values") +
   theme_bw()
@@ -491,7 +476,7 @@ ggplot(NULL, aes(pred.rlasso, obs))+
 
 ```{r}
 #| label: fig-rlassocoef 
-#| fig-cap: "Coefficients of the lasso regression model ordered by the magnitude." 
+#| fig-cap: "Coefficients of the ridge-lasso regression model ordered by the magnitude." 
 tbl_coef_rlasso <- data.frame("peptide"=str_remove_all(names(coef.rlasso)[2:(p+1)], "x."), "coef"=coef.rlasso[2:(p+1)]) 
 
 p1 <- tbl_coef_rlasso %>%
@@ -543,8 +528,7 @@ for(i in 1:ncv){
 
 # Performance 
 pred.rgarrote <- data.obj$preds
-obs <- data.obj$y
-tbl_rgarrote <- eval_performance(pred=pred.rgarrote, obs=obs)
+tbl_rgarrote <- eval_performance(pred=pred.rgarrote, obs=data.obj$y)
 
 # Final model
 fit.rgarrote <- perform_rgarrote(data.obj = data.obj, family="gaussian", cv=ncv, R=nR, nlambda=c(10,10))
@@ -558,10 +542,11 @@ list.varsel$rgarrote <- rgarrote.varsel
 
 ```{r}
 #| label: fig-rgarrote
-#| fig-cap: "Calibration curve of the observed and the fitted values obtained by and L1-norm"
-ggplot(NULL, aes(pred.rgarrote, obs))+
+#| fig-cap: "Calibration curve of the observed and the fitted values for the ridge-garrote model"
+ggplot(NULL, aes(pred.rgarrote, data.obj$y))+
   geom_point()+
-  geom_smooth()+
+  geom_smooth(method = "gam", 
+              formula = y ~ s(x, bs = "cs", fx = TRUE, k = 20))+
   geom_abline(intercept=0, slope=1) +
   scale_x_continuous("Fitted values") +
   theme_bw()
@@ -654,10 +639,11 @@ tbl_rf_tune <- eval_performance(pred.rf.tune, obs)
 
 ```{r}
 #| label: fig-rf
-#| fig-cap: "Calibration curve of the observed and the fitted values obtained by random forest"
-ggplot(NULL, aes(pred.rf.tune, dataset$log2eGFR))+
+#| fig-cap: "Calibration curve of the observed and the fitted values obtained by random forest (with tuning of mtry)"
+ggplot(NULL, aes(pred.rf.tune, data_mos$log2eGFR))+
   geom_point()+
-  geom_smooth()+
+  geom_smooth(method = "gam", 
+              formula = y ~ s(x, bs = "cs", fx = TRUE, k = 20))+
   geom_abline(intercept=0, slope=1) +
   scale_x_continuous("Fitted values") +
   theme_bw()
@@ -687,10 +673,11 @@ tbl_rf_notune <- eval_performance(pred.rf.notune, obs)
 
 ```{r}
 #| label: fig-rfnotune
-#| fig-cap: "Calibration curve of the observed and the fitted values obtained by random forest"
-ggplot(NULL, aes(pred.rf.notune, dataset$log2eGFR))+
+#| fig-cap: "Calibration curve of the observed and the fitted values obtained by random forest (without tuning of any hyperparameters)"
+ggplot(NULL, aes(pred.rf.notune, data_mos$log2eGFR))+
   geom_point()+
-  geom_smooth()+
+  geom_smooth(method = "gam", 
+              formula = y ~ s(x, bs = "cs", fx = TRUE, k = 20))+
   geom_abline(intercept=0, slope=1) +
   scale_x_continuous("Fitted values") +
   theme_bw()
@@ -701,7 +688,8 @@ ggplot(NULL, aes(pred.rf.notune, dataset$log2eGFR))+
 ## Performance measures
 ```{r}
 #| label: tbl-results
-#| fig-cap: "Results of all models"
+#| tbl-cap: "Results of all models"
+
 tbl_res <- data.frame(rbind(tbl_ridge, tbl_lasso, tbl_lridge, tbl_rlasso, tbl_rgarrote, tbl_rf_tune, tbl_rf_notune)) 
 
 tbl_res %>%
@@ -717,9 +705,7 @@ tbl_res %>%
 
 ```{r, }
 #| label: fig-venn
-#|fig-cap: "Venn diagramm of selected predictors by the dfferent methods"
-library(ggvenn)
-library(RColorBrewer)
+#| fig-cap: "Venn diagramm of selected predictors by the dfferent methods"
 
 # Prepare a palette of 6 colors with R colorbrewer:
 myCol <- brewer.pal(6, "Pastel2")
@@ -747,6 +733,10 @@ p2 <- ggplot(data_venn,                         # Apply geom_venn function
 p1 + p2
 ```
 ```{r}
+#| label: fig-coefsall
+#| fig-cap: "Visualization of the component-specific regression coefficients from all models"
+
+
 tbl_coef_ridge <- tbl_coef_ridge %>%
   mutate(model = "ridge") %>%
   pivot_longer(cols=c(U,D), names_to = "component", values_to = "coef")
@@ -771,7 +761,8 @@ tbl_coef_all %>%
          model_comp = paste0(model, "+", component)) %>%
   ggplot(aes(x=peptide_id, y=coef, group=model, col=model, shape=component)) +
   geom_point() +
-#  geom_line(orientation = "y") +
-  theme_bw()
+  scale_x_continuous("Peptide index") +
+  scale_y_continuous("Coefficients") +
+    theme_bw()
 ```
 
