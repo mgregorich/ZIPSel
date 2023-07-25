@@ -29,12 +29,8 @@ simulate_scenario <- function(scen){
 data_generation <- function(n, p){
   
   # Remove later
-  # n<-300 
-  # p<-100 
-  
-  # Clinical variables
-  age <- floor(runif(n, 20, 81))
-  sex <- rbinom(n, size=1, prob=0.5)
+  n<-300
+  p<-100
   
   # Zero-inflated predictors
   prop.nonzero<-runif(p,0.75, 1)   # proportion nonzero for each peptide
