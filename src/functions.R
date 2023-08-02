@@ -74,10 +74,9 @@ eval_performance <- function(pred, obs){
 }
 
 
-
-simcor.H <- function(k=6, size=c(10,5,8,7,15,50), 
-                     rho=rbind(c(.9,.7), c(.7,.7), c(.7,.2), c(.5,.3), c(.9,.85), c(.3,.2)), power=1,
-                     epsilon=.08, eidim=2){
+simcor.H <- function(k=4, size=c(10,10,10,10), 
+                     rho=rbind(c(.8,.2), c(.8,.2), c(.8,.2), c(.2,.2)), power=1,
+                     epsilon=.075, eidim=2){
   #' Simulating the Hub Matrix (entries filled in using Toeplitz structure)
   #' Implementation by Hardin et al. (DOI: 10.1214/13-AOAS638)
   #' k is the number of groups
@@ -87,36 +86,52 @@ simcor.H <- function(k=6, size=c(10,5,8,7,15,50),
   #' tau_k = (max(rho_k) - min(rho_k) )/ (size_k -2) 
   #' eidim is the space from which the noise is generated, the smaller the more noise
   #' power = 2 makes the correlations stay high
-  #'power = 0.5 makes the correlations descent rapidly
+  #' power = 0.5 makes the correlations descent rapidly
+  # k = k; size = groupsize; rho = rbind(c(.8,.2), c(.8,.2), c(.8,.2), c(.2,.2)); power = 1; epsilon = .075; eidim = 2
   
-  ndim <- sum(size)# dim of correlation matrix
-  bigcor<- matrix(rep(0, ndim*ndim), ncol=ndim)
+  ndim  <- sum(size)# dim of correlation matrix
+  bigcor <- matrix(rep(0, ndim*ndim), ncol=ndim)
   
   ### generating the basic correlation matrix
+  
   for (i in 1:(k) ){
+    elemsize <- size[i]*(size[i]-1)/2
+    corelem <-rho.func(rho[i,1],rho[i,2],power=1.5, p=elemsize) 
+    cormat <- matrix(1, ncol=size[i], nrow=size[i])
+    cormat[lower.tri(cormat)] <- corelem
+    cormat[upper.tri(cormat)] <- t(cormat[lower.tri(cormat)])
     
-    cor <- toeplitz(rho.func(rho[i,1],rho[i,2],power,size[i]) )
-    
-    if (i==1){bigcor[1:size[1], 1:size[1]] <- cor}
+    if (i==1){bigcor[1:size[1], 1:size[1]] <- cormat}
     if (i!=1){bigcor[(sum(size[1:(i-1)]) + 1):sum(size[1:i]),
-                     (sum(size[1:(i-1)]) + 1):sum(size[1:i])] <- cor}
+                     (sum(size[1:(i-1)]) + 1):sum(size[1:i])] <- cormat}
   }
   diag(bigcor) <- 1 - epsilon
   
-  return(bigcor)
-  
   ### adding noise to the correlation matrix
-  # eivect <- c( )
-  # for (i in 1:ndim) {
-  #   ei <- runif(eidim, -1, 1)
-  #   eivect <- cbind(eivect, sqrt(epsilon) * ei / sqrt(sum(ei^2) ) )
-  # }
-  # 
-  # 
-  # bigE <- t(eivect) %*% eivect
-  # cor.nz <- bigcor + bigE
-  # cor.nz
-}
+  eivect <- c( )
+  for (i in 1:ndim) {
+    ei <- runif(eidim, -1, 1)
+    eivect <- cbind(eivect, sqrt(epsilon) * ei / sqrt(sum(ei^2) ) )
+  }
+  
+  bigE <- t(eivect) %*% eivect
+  cor.nz <- bigcor + bigE
+  return(cor.nz)
+  }
+  
+
+rho.func <- function(r.max, r.min, power,p){
+  rhovec <-c()
+  rhovec[1] <- 1
+  for(i in 2:(p+1)){
+    rhovec[i] <- r.max - ((i-2)/(p-2))^power*(r.max-r.min)
+  }
+  rhovec <- rhovec[-1]
+  return(rhovec)
+  }
+
+
+
 
 # ========================== NONNEGATIVE GARROTE ===============================
 # Code by Georg Heinze, modified by MG

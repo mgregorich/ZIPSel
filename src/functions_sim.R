@@ -28,32 +28,17 @@ simulate_scenario <- function(scen){
 # ============================ Data generation =================================
 data_generation <- function(n, p){
   
-  # Remove later
-  n<-300
-  p<-100
+  # Step 1: Generate Spike at Zero Variables
+  # Remove later (parameter input for function)
+  n <- 200     # Number of observations
+  p <- 100     # Number of variables
   
-  # Zero-inflated predictors
-  prop.nonzero<-runif(p,0.75, 1)   # proportion nonzero for each peptide
-  prop.nonzero<-sort(prop.nonzero)
-  means.peptide<-2+prop.nonzero*2    # we create consonant peptides only
-  X <- matrix(rnorm(n*p), n, p, byrow=TRUE) + matrix(means.peptide, n, p, byrow=TRUE)
-  X.zi <- peptide * rbinom(n*p, size=1, prob=matrix(prop.nonzero, n, p, byrow=TRUE))
 
-  # Predictive X
-  predictiveX <- sample(1:p, size=10)
-  b0 <- 1
-  bX <- 2
-  bsex <- 1.5
-  bage <- -2
-  b.true <- c(b0, bsex, bage, bX)
-  
-  # Outcome
-  eps <- rnorm(n, mean=0, sd=5)
-  y <- b0 + rowSums(2* X[,predictiveX] + bsex*sex + bage*age/100) + eps
-  
-  out <- data.frame("y"=y, "sex"=sex, "age"=age, "x"=X, "xz"=X.zi)
+
   return(out)
 }
+
+
 
 
 # ============================ Data analysis =================================

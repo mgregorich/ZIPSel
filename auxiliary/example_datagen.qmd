@@ -1,0 +1,159 @@
+---
+title: 'Example of data generation'
+author:
+  - name: "Mariella Gregorich"
+    affiliation: "Medical University of Vienna, Center for Medical Data Science"
+date: last-modified
+categories: [2023, ZIPSel, variable selection, R]
+description: "Classification: confidential"
+editor: visual
+theme: cosmo
+toc: true  
+number-sections: true
+colorlinks: true
+highlight-style: pygments
+format:
+  html: 
+    code-fold: true
+    code-tools: true
+    html-math-method: katex
+    self-contained: true
+---
+
+
+
+# Preliminaries
+
+```{r}
+rm(list=ls())
+pacman::p_load(ggplot2, dplyr, tidyverse, gt, MASS, patchwork)
+source(here::here("src","functions.R"))
+set.seed(666)
+
+# Parameters
+n = 200
+p = 100
+k = 4
+groupsize = c(25, 25, 25, 25)
+```
+
+
+# Hub correlation structure
+
+```{r}
+#' Simulating the Hub Matrix (entries filled in using Toeplitz structure)
+#' Implementation by Hardin et al. (DOI: 10.1214/13-AOAS638)
+#' k is the number of groups
+#' size is a vector of length k specifying the size of each group 
+#' rho is a vector of length k specifying base correlation values
+#' epsilon <- (1-min(rho) - 0.75*min(tau) ) - .01
+#' tau_k = (max(rho_k) - min(rho_k) )/ (size_k -2) 
+#' eidim is the space from which the noise is generated, the smaller the more noise
+#' power = 2 makes the correlations stay high
+#' power = 0.5 makes the correlations descent rapidly
+hub_cormat <- simcor.H(k = k, size = groupsize, rho = rbind(c(.8,.2), c(.8,.2), c(.8,.2), c(.4,.2)), power = 1,
+                     epsilon = .075, eidim = 2)
+hub_cormat <- Matrix::nearPD(hub_cormat, base.matrix = TRUE, keepDiag = TRUE)$mat
+melted_cormat <- reshape2::melt(round(hub_cormat,4))
+
+p1 <- ggplot(data = melted_cormat, aes(x=Var1, y=Var2, fill=value)) + 
+  geom_tile() +
+  scale_fill_gradient2(low = "blue", high = "red", mid = "white", 
+                       midpoint = 0, limit = c(-1,1), space = "Lab", 
+                       name="") +
+  scale_x_continuous("Candidate variables", expand=c(0,0)) +
+  scale_y_continuous("Candidate variables", expand=c(0,0)) +
+  theme_bw() 
+p1
+```
+
+# Log-normal data
+```{r}
+# Normally distributed data
+data_vars <- mvrnorm(n = n, mu = rep(-2.5, nrow(hub_cormat)), Sigma = hub_cormat)
+
+
+# Log normally distributed data
+data_logvars <- exp(data_vars)
+data_logvars[data_logvars>quantile(data_logvars, 0.99)] <- 0
+```
+
+```{r}
+# Compute mean and covariance for X when Y=exp(X)~logMN(mu, sigma) with mu and sigma given
+compute_mnxpars <- function(rho_logx=hub_cormat, sd_logx, mu_logx){
+  cov_logx <- sd_logx %*% t(sd_logx)*rho_logx
+  mu_x <- log(mu_logx) - 0.5 * sd_logx
+
+  for (i in 1:nrow(cov_x)) {
+    for (j in 1:ncol(cov_x)) {
+        cov_x[i, j] <- log((cov_logx[i, j] / (mu_logx[i] * mu_logx[j])) + 1)
+    }
+  }
+  return(list(mu_x, cov_x))
+}
+
+```
+
+
+```{r}
+data_vars %>%
+  data.frame() %>%
+  mutate(ID=1:nrow(.)) %>%
+  pivot_longer(cols=!ID, values_to="Values", names_to="Variable") %>%
+  mutate_at(vars(Values), as.numeric) %>%
+  ggplot(aes(x=Values, group=ID, col=ID)) +
+  geom_density() +
+  scale_x_continuous("Edge weight") +
+  scale_y_continuous("Density") +
+  theme_bw() +
+  theme(text=element_text(size=14), legend.position = "None")
+```
+
+```{r}
+data_logvars %>%
+  data.frame() %>%
+  mutate(ID=1:nrow(.)) %>%
+  pivot_longer(cols=!ID, values_to="Values", names_to="Variable") %>%
+  mutate_at(vars(Values), as.numeric) %>%
+  ggplot(aes(x=Values, group=ID, col=ID)) +
+  geom_density() +
+  scale_x_continuous("Edge weight") +
+  scale_y_continuous("Density") +
+  theme_bw() +
+  theme(text=element_text(size=14), legend.position = "None")
+```
+
+
+```{r}
+cormat <- cor(data_logvars)
+melted_cormat <- reshape2::melt(round(cormat,4))
+
+p2 <- ggplot(data = melted_cormat, aes(x=Var1, y=Var2, fill=value)) + 
+  geom_tile() +
+  scale_fill_gradient2(low = "blue", high = "red", mid = "white", 
+                       midpoint = 0, limit = c(-1,1), space = "Lab", 
+                       name="") +
+  scale_x_continuous("Candidate variables", expand=c(0,0)) +
+  scale_y_continuous("Candidate variables", expand=c(0,0)) +
+  theme_bw() 
+p1 + ggtitle("Hub correlation design") + p2 + ggtitle("Empirical correlation") +
+  plot_layout(guides = "collect")
+```
+
+```{r}
+# Extract hubs
+hubindex <- cumsum(groupsize)-groupsize+1
+
+# Generate coeffs and error
+beta_hub <- rep(2, length(hubindex))
+eps <- rlnorm(n, meanlog = 0.5, sd=0.05)
+hist(eps)
+```
+
+
+```{r}
+# Generate outcome
+y <- data_logvars[,hubindex] %*% beta_hub + eps
+hist(y, main="Outcome variable y")
+```
+
