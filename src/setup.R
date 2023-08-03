@@ -7,8 +7,8 @@
 
 # Packages
 pacman::p_load(ggplot2, parallel, future.apply, stringr, kableExtra,
-               openxlsx, dplyr, tidyverse,tableone,  concreg,
-               glmnet, gglasso, oem, WGCNA)
+               openxlsx, dplyr, tidyverse, tableone, concreg, Matrix,
+               glmnet)
 
 # Paths
 sim.date <- Sys.Date()
@@ -23,7 +23,7 @@ iter = 1000
 n = c(100,200,400)         # sample size
 p = c(200,400)             # number of candidate predictors
 m = 4                      # number of modules
-setting = c("one-module-effect", "two-module-effect", "random-selection")
+
 
 # Scenario matrix
 scenarios <- expand.grid(

@@ -105,7 +105,6 @@ table_vars %>%
   `colnames<-`(c("Variable", "Statistics")) %>% gt()
 ```
 
-
 ```{r}
 p1 <- data_mos %>% 
   select(-c(idAuswertung, Age, Sex, eGFR)) %>% 
@@ -141,8 +140,6 @@ ggsave(file = here::here("output","fig_dist_zi.tiff"), plot = p_together,
 ```
 
 ## Example of data transformations
-
-
 
 ```{r}
 #| label: fig-example
@@ -420,6 +417,7 @@ p1 + p2
 ## Lasso-Ridge
 
 ### Combined
+
 ```{r}
 # CV Predictions
 for(i in 1:ncv){
@@ -456,7 +454,6 @@ lridge.varsel <- names(coef.lridge.cb[coef.lridge.cb != 0])[-1]
 lridge.varsel <- str_remove_all(lridge.varsel, "u.|d.")
 list.varsel$lridge.cb <- lridge.varsel
 ```
-
 
 ```{r}
 #| label: fig-lridgecoefcb 
@@ -548,7 +545,6 @@ lridge.varsel <- str_remove_all(lridge.varsel, "u.|d.")
 list.varsel$lridge.cp <- lridge.varsel
 ```
 
-
 ```{r}
 #| label: fig-lridgecoefcp 
 #| fig-cap: "Component-specific coefficients of the lasso-ridge regression model ordered by the magnitude of the coefficients corresponding to D and U, respectively." 
@@ -601,7 +597,6 @@ p3 <- tbl.coef.lridge.cp %>%
 p1 + p2 + p3
 ```
 
-
 ## Ridge-Lasso (adaptive lasso)
 
 ### Combined
@@ -642,7 +637,6 @@ rlasso.varsel <- str_remove_all(rlasso.varsel, "u.|d.")
 list.varsel$rlasso.cb <- rlasso.varsel
 ```
 
-
 ```{r}
 #| label: fig-rlassocoefcb 
 #| fig-cap: "Coefficients of the ridge-lasso regression model ordered by the magnitude." 
@@ -675,7 +669,6 @@ p2 <- tbl.coef.rlasso.cb %>%
   theme(plot.title = element_text(hjust = 0.5))
 p1 + p2
 ```
-
 
 ### Component
 
@@ -788,7 +781,6 @@ rgarrote.varsel <- str_remove_all(rgarrote.varsel, "u.|d.")
 list.varsel$rgarrote <- rgarrote.varsel
 ```
 
-
 ```{r}
 #| label: fig-rgarrotecoefcb 
 #| fig-cap: "Component-specific coefficients of the ridge-garrote regression model ordered by D and U, respectively." 
@@ -840,17 +832,20 @@ p3 <- tbl.coef.rgarrote.cb %>%
 (p1 + p2 + p3) +
   plot_layout(guides = "collect") & theme(legend.position = 'bottom')
 ```
+
 <!-- <br> -->
 
 <!-- ```{r} -->
+
 <!-- #| label: fig-rgarrlambdacb -->
+
 <!-- #| fig-cap: "Cross-validated prediction error in which each line corresponds to a sequence of lambda1 values, and the different lambda2 values are the 'inner' loop. The vertical bars refer to standard errors of the prediction errors. The optimal combination of lambda1 and lambda2 is highlighted in black." -->
+
 <!-- plot.protogarrote(fit.rgarrote.cb) -->
+
 <!-- ``` -->
 
-
 ### Component
-
 
 ```{r model-rgarrote-cp}
 # CV Predictions
@@ -887,7 +882,6 @@ rgarrote.varsel <- names(fit.rgarrote.cp$fit$coefficients[fit.rgarrote.cp$fit$co
 rgarrote.varsel <- str_remove_all(rgarrote.varsel, "u.|d.")
 list.varsel$rgarrote.cp <- rgarrote.varsel
 ```
-
 
 ```{r}
 #| label: fig-rgarrotecoefcp 
@@ -944,15 +938,19 @@ p3 <- tbl.coef.rgarrote.cp %>%
 <!-- <br> -->
 
 <!-- ```{r} -->
-<!-- #| label: fig-rgarrlambdacb -->
-<!-- #| fig-cap: "Cross-validated prediction error in which each line corresponds to a sequence of lambda1 values, and the different lambda2 values are the 'inner' loop. The vertical bars refer to standard errors of the prediction errors. The optimal combination of lambda1 and lambda2 is highlighted in black." -->
-<!-- plot.protogarrote(fit.rgarrote.cp) -->
-<!-- ``` -->
 
+<!-- #| label: fig-rgarrlambdacb -->
+
+<!-- #| fig-cap: "Cross-validated prediction error in which each line corresponds to a sequence of lambda1 values, and the different lambda2 values are the 'inner' loop. The vertical bars refer to standard errors of the prediction errors. The optimal combination of lambda1 and lambda2 is highlighted in black." -->
+
+<!-- plot.protogarrote(fit.rgarrote.cp) -->
+
+<!-- ``` -->
 
 ## Random forest
 
 ### without tuning
+
 ```{r}
 #| output: false
 
@@ -973,6 +971,7 @@ tbl.rf.notune <- eval_performance(pred = dataset$pred.rf.notune, obs = dataset$y
 ```
 
 ### tuning
+
 ```{r}
 #| output: false
 dataset <- data.frame(y = log2(data_mos$eGFR), age = data_mos$Age, sex = data_mos$Sex, x, pred.rf.tune = NA)
@@ -992,9 +991,10 @@ for(i in 1:ncv){
 tbl.rf.tune <- eval_performance(pred = dataset$pred.rf.tune, obs = dataset$y)
 ```
 
-
 # Results
+
 ## Performance measures
+
 ```{r}
 #| label: tbl-results
 #| tbl-cap: "Results of all models"
@@ -1022,49 +1022,53 @@ tbl.res %>%
 
 ## Variable selection
 
-
 ## Calibration
 
-:::{.panel-tabset}
-
+::: panel-tabset
 ### Ridge
-```{r} 
+
+```{r}
 pcal_ridge_cb <- plot_calibration(pred = data.obj$pred.ridge.cb, obs = data_mos$log2eGFR, fig.title = "penalty: combined")
 pcal_ridge_cp <- plot_calibration(pred = data.obj$pred.ridge.cp, obs = data_mos$log2eGFR, fig.title = "penalty: component")
 pcal_ridge_cb + pcal_ridge_cp
 ```
 
 ### Lasso
-```{r} 
+
+```{r}
 pcal_lasso <- plot_calibration(pred = data.obj$pred.lasso, obs = data_mos$log2eGFR, fig.title = "penalty: combined")
 pcal_lasso
 ```
 
 ### Lasso-ridge
-```{r} 
+
+```{r}
 pcal_lridge_cb <- plot_calibration(pred = data.obj$pred.lridge.cb, obs = data.obj$y, fig.title = "penalty: combined")
 pcal_lridge_cp <- plot_calibration(pred = data.obj$pred.lridge.cp, obs = data.obj$y, fig.title = "penalty: component")
 pcal_lridge_cb + pcal_lridge_cp
 ```
 
 ### Ridge-lasso
-```{r} 
+
+```{r}
 pcal_rlasso_cb <- plot_calibration(pred = data.obj$pred.rlasso.cb, obs = data.obj$y, fig.title = "penalty: combined")
 pcal_rlasso_cp <- plot_calibration(pred = data.obj$pred.rlasso.cp, obs = data.obj$y, fig.title = "penalty: component")
 pcal_rlasso_cb + pcal_rlasso_cp 
 ```
 
 ### Ridge-garrote
-```{r} 
+
+```{r}
 pcal_rgarrote_cb <- plot_calibration(pred = data.obj$pred.rgarrote.cb, obs = data.obj$y, fig.title = "penalty: combined")
 pcal_rgarrote_cp <- plot_calibration(pred = data.obj$pred.rgarrote.cp, obs = data.obj$y, fig.title = "penalty: component")
 pcal_rgarrote_cb + pcal_rgarrote_cp 
 ```
 
 ### Random forest
-```{r} 
+
+```{r}
 pcal_rf_notune <- plot_calibration(pred = dataset$pred.rf.notune, obs = dataset$y, fig.title = "no tuning")
 pcal_rf_tune <- plot_calibration(pred = dataset$pred.rf.tune, obs = dataset$y, fig.title = "with tuning")
 pcal_rf_notune + pcal_rf_tune
-``` 
+```
 :::

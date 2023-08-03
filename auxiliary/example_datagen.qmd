@@ -35,6 +35,7 @@ n = 200
 p = 100
 k = 4
 groupsize = c(25, 25, 25, 25)
+prop.nonzero <- 0.5
 ```
 
 
@@ -56,7 +57,7 @@ hub_cormat <- simcor.H(k = k, size = groupsize, rho = rbind(c(.8,.2), c(.8,.2), 
 hub_cormat <- Matrix::nearPD(hub_cormat, base.matrix = TRUE, keepDiag = TRUE)$mat
 melted_cormat <- reshape2::melt(round(hub_cormat,4))
 
-p1 <- ggplot(data = melted_cormat, aes(x=Var1, y=Var2, fill=value)) + 
+pc1 <- ggplot(data = melted_cormat, aes(x=Var1, y=Var2, fill=value)) + 
   geom_tile() +
   scale_fill_gradient2(low = "blue", high = "red", mid = "white", 
                        midpoint = 0, limit = c(-1,1), space = "Lab", 
@@ -64,7 +65,7 @@ p1 <- ggplot(data = melted_cormat, aes(x=Var1, y=Var2, fill=value)) +
   scale_x_continuous("Candidate variables", expand=c(0,0)) +
   scale_y_continuous("Candidate variables", expand=c(0,0)) +
   theme_bw() 
-p1
+pc1
 ```
 
 # Log-normal data
@@ -78,49 +79,33 @@ data_logvars <- exp(data_vars)
 data_logvars[data_logvars>quantile(data_logvars, 0.99)] <- 0
 ```
 
-```{r}
-# Compute mean and covariance for X when Y=exp(X)~logMN(mu, sigma) with mu and sigma given
-compute_mnxpars <- function(rho_logx=hub_cormat, sd_logx, mu_logx){
-  cov_logx <- sd_logx %*% t(sd_logx)*rho_logx
-  mu_x <- log(mu_logx) - 0.5 * sd_logx
-
-  for (i in 1:nrow(cov_x)) {
-    for (j in 1:ncol(cov_x)) {
-        cov_x[i, j] <- log((cov_logx[i, j] / (mu_logx[i] * mu_logx[j])) + 1)
-    }
-  }
-  return(list(mu_x, cov_x))
-}
-
-```
 
 
 ```{r}
-data_vars %>%
+p1 <- data_vars %>%
   data.frame() %>%
   mutate(ID=1:nrow(.)) %>%
   pivot_longer(cols=!ID, values_to="Values", names_to="Variable") %>%
   mutate_at(vars(Values), as.numeric) %>%
   ggplot(aes(x=Values, group=ID, col=ID)) +
   geom_density() +
-  scale_x_continuous("Edge weight") +
+  scale_x_continuous("Value") +
   scale_y_continuous("Density") +
   theme_bw() +
   theme(text=element_text(size=14), legend.position = "None")
-```
 
-```{r}
-data_logvars %>%
+p2 <- data_logvars %>%
   data.frame() %>%
   mutate(ID=1:nrow(.)) %>%
   pivot_longer(cols=!ID, values_to="Values", names_to="Variable") %>%
   mutate_at(vars(Values), as.numeric) %>%
   ggplot(aes(x=Values, group=ID, col=ID)) +
   geom_density() +
-  scale_x_continuous("Edge weight") +
+  scale_x_continuous("Value") +
   scale_y_continuous("Density") +
   theme_bw() +
   theme(text=element_text(size=14), legend.position = "None")
+p1 + p2
 ```
 
 
@@ -128,7 +113,7 @@ data_logvars %>%
 cormat <- cor(data_logvars)
 melted_cormat <- reshape2::melt(round(cormat,4))
 
-p2 <- ggplot(data = melted_cormat, aes(x=Var1, y=Var2, fill=value)) + 
+pc2 <- ggplot(data = melted_cormat, aes(x=Var1, y=Var2, fill=value)) + 
   geom_tile() +
   scale_fill_gradient2(low = "blue", high = "red", mid = "white", 
                        midpoint = 0, limit = c(-1,1), space = "Lab", 
@@ -136,24 +121,66 @@ p2 <- ggplot(data = melted_cormat, aes(x=Var1, y=Var2, fill=value)) +
   scale_x_continuous("Candidate variables", expand=c(0,0)) +
   scale_y_continuous("Candidate variables", expand=c(0,0)) +
   theme_bw() 
-p1 + ggtitle("Hub correlation design") + p2 + ggtitle("Empirical correlation") +
+pc1 + ggtitle("Hub correlation design") + pc2 + ggtitle("Empirical correlation") +
   plot_layout(guides = "collect")
 ```
+
+```{r}
+# Structural zeros
+D <- rbinom(n*p, size=1, prob=matrix(prop.nonzero, n, k, byrow=TRUE))
+X <- data_logvars * D
+```
+
 
 ```{r}
 # Extract hubs
 hubindex <- cumsum(groupsize)-groupsize+1
 
-# Generate coeffs and error
-beta_hub <- rep(2, length(hubindex))
-eps <- rlnorm(n, meanlog = 0.5, sd=0.05)
+# Generate coeffs and error 
+beta_X <- beta_D <- rep(0, p)
+beta_X[hubindex] <- beta_D[hubindex] <- coefs
+eps <- rlnorm(n, meanlog = epsmean, sd=epsstd)
 hist(eps)
 ```
 
 
 ```{r}
 # Generate outcome
-y <- data_logvars[,hubindex] %*% beta_hub + eps
+y <- X %*% beta_X + D %*% beta_D + eps
 hist(y, main="Outcome variable y")
 ```
 
+
+```{r}
+# Sampling zeros for data analyst
+Xs <- X
+Xs[Xs < sampthresh] <- 0
+
+plot(x=1:ncol(Xs), sort(apply(Xs,2, function(x) sum(x==0)/length(x))))
+```
+
+# More technical data generation
+
+
+```{r}
+# Compute mean and covariance for X when Y=exp(X)~logMN(mu, sigma) with mu and sigma given
+compute_mnxparams <- function(rho_logx, sd_logx, mu_logx){
+  # rho_logx=hub_cormat; mu_logx = mu_logx; sd_logx=stddev_logx
+  if(all(length(mu_logx)!=c(1, length(diag(cov_logx))))){
+    stop("Length of mu_logx must be 1 or equal to the diagonal length of cov_logx.")}
+  if(length(sd_logx)!=nrow(rho_logx)){sd_logx <- rep(sd_logx[1], nrow(rho_logx))}
+  if(length(mu_logx)==1){mu_logx <- rep(mu_logx, nrow(rho_logx))}
+
+  cov_logx <- sd_logx %*% t(sd_logx)*rho_logx
+  mu_x <- log(mu_logx) - 0.5 * diag(cov_logx)
+
+  cov_x <- matrix(NA, nrow=nrow(cov_logx), ncol=ncol(cov_logx))
+  for (i in 1:nrow(cov_logx)) {
+    for (j in 1:ncol(cov_logx)) {
+      print(paste0(i, " and ", j,"\n"))
+        cov_x[i, j] <- log((cov_logx[i, j] / (mu_logx[i] * mu_logx[j])) + 1)
+    }
+  }
+  return(list(mu_x, cov_x))
+}
+```
