@@ -73,6 +73,18 @@ eval_performance <- function(pred, obs){
   return(res)
 }
 
+generate_dataobj <- function(y, x, clinical = NULL){
+  colnames(x) <- paste0("x.", 1:ncol(x))
+  d <- (x != 0)*1
+  colnames(d) <- paste0("d.", 1:ncol(d))
+  u <- apply(x, 2, function(x) ifelse(x == 0, mean(x[x > 0]), x))
+  colnames(u) <- paste0("u.", 1:ncol(u))
+  global_min <- min(x[x > 0])
+  ximp <- apply(x, 2, function(x) ifelse(x == 0, global_min*(1/2), x))
+  
+  data.obj <- list("y" = y, "x" = ximp, "u" = u, "d" = d, "clinical" = clinical)    
+  return(data.obj)
+}
 
 simcor.H <- function(k=4, size=c(10,10,10,10), 
                      rho=rbind(c(.8,.2), c(.8,.2), c(.8,.2), c(.2,.2)), power=1,
@@ -441,14 +453,24 @@ perform_penreg <- function(data.obj, penalties = 1, family = "gaussian", penalty
   u <- data.obj[["u"]]
   d <- data.obj[["d"]]
   y <- data.obj[["y"]]
-  clinical <- data.frame("y" = y, data.obj[["clinical"]])
+  if(!is.null(data.obj[["clinical"]])) clinical <- data.frame("y" = y, data.obj[["clinical"]])
   if(alpha1 == 1){varmat <- x
   }else{varmat <- as.matrix(cbind(u, d))}
   
   n <- nrow(u)
   k <- ncol(x)
   npf <- length(pflist)
-  kclin <- ncol(clinical)
+  kclin <- ifelse(!is.null(data.obj[["clinical"]]), ncol(clinical), 0)
+  
+  # Clinical offset
+  if(is.null(data.obj[["clinical"]])){
+    clin_offset_coefs <- rep(0, k)
+    clin_offset <- rep(0, n)
+  }else{
+    fit.clin <- glm(y~., data = clinical, family = "gaussian")
+    clin_offset_coefs <- fit.clin$coefficients[-1]
+    clin_offset <- apply(clinical %>% select(-y), 2, to_numeric) %*% clin_offset_coefs        
+  }
   
   prederror <- lambdas_pf <- matrix(NA, nrow = npf, ncol = nl1)
   for(p in 1:npf){
@@ -456,14 +478,10 @@ perform_penreg <- function(data.obj, penalties = 1, family = "gaussian", penalty
     pfvector <- rep(pf, each=k)[1:ncol(varmat)]
     
     ## CV ridge model with offset
-    lambdas <- cvmerror <- matrix(0, R, nl1)
+    lambdas <- cvmerror <- matrix(0, R, nl1) 
+    
     for(outer in 1:R){
       set.seed(outer)
-      # Clinical offset
-      fit.clin <- glm(y~., data = clinical, family = "gaussian")
-      clin_offset_coefs <- fit.clin$coefficients[-1]
-      clin_offset <- apply(clinical %>% select(-y), 2, to_numeric) %*% clin_offset_coefs
-      
       # CV ridge model with offset
       cv_ridge <- cv.glmnet(x = varmat, y = y, alpha = alpha1, standardize = FALSE,
                             offset = clin_offset, penalty.factor = pfvector, nfolds = cv, nlambda = nl1)
@@ -478,11 +496,6 @@ perform_penreg <- function(data.obj, penalties = 1, family = "gaussian", penalty
   pfvector.min <- rep(pf.min, each=k)[1:ncol(varmat)]
   
   ## Final model
-  # Clinical offset
-  fit.clin <- glm(y~., data=clinical, family="gaussian")
-  clin_offset_coefs <- fit.clin$coefficients[-1]
-  clin_offset <- apply(clinical %>% select(-y), 2, to_numeric) %*% clin_offset_coefs
-  
   # CV ridge model with offset
   fit.ridge <- glmnet(x = varmat, y = y, alpha = alpha1, standardize = FALSE,
                       offset = clin_offset, penalty.factor = pfvector.min, nfolds = cv, lambda = nl1)
@@ -500,17 +513,21 @@ perform_penreg <- function(data.obj, penalties = 1, family = "gaussian", penalty
   return(res)
 }
 
-predict_penreg<-function(obj, newdata, type="link", model="ridge"){
+predict_penreg <- function(obj, newdata, type = "link", model = "ridge"){
   x <- newdata[["x"]]
   u <- newdata[["u"]]
   d <- newdata[["d"]]
-  clinical <- newdata[["clinical"]]
   
   if(model == "ridge"){
     varmat <- cbind(u, d)
   }else{ varmat <- x }
-
-  new_offset <- apply(clinical, 2, to_numeric) %*% obj$fit$clin_offset_coefs
+  
+  if(!is.null(data.obj[["clinical"]])){
+    clinical <- newdata[["clinical"]]
+    new_offset <- apply(clinical, 2, to_numeric) %*% obj$fit$clin_offset_coefs
+  }else{
+    new_offset <- rep(0, nrow(x))
+  }
   x <- cbind(1, varmat[ ,names(obj$fit$coefficients[obj$fit$coefficients != 0])[-1]])
   beta <- obj$fit$coefficients[obj$fit$coefficients != 0]
   linpred <- x %*% beta + new_offset
@@ -536,13 +553,13 @@ perform_lridge <- function(data.obj, family = "gaussian", nlambda = c(10,10), cv
   u <- data.obj[["u"]]
   d <- data.obj[["d"]]
   y <- data.obj[["y"]]
-  clinical <- data.frame("y" = y, data.obj[["clinical"]])
+  if(!is.null(data.obj[["clinical"]])) clinical <- data.frame("y" = y, data.obj[["clinical"]])
   xmat <- as.matrix(x)  
   udmat <- as.matrix(cbind(u, d))  
   
   n <- nrow(x)
   k <- ncol(x)
-  kclin <- ncol(clinical)
+  kclin <- ifelse(is.null(data.obj[["clinical"]]), 0, ncol(clinical))
   npf <- length(pflist)
   
   # get number of lambdas
@@ -563,21 +580,25 @@ perform_lridge <- function(data.obj, family = "gaussian", nlambda = c(10,10), cv
       for(inner in 1:cv){ # inner loopf for cv 
         beta <- matrix(0, ncol(udmat) + 1, nl1*nl2)
         rownames(beta) <- c("(Intercept)", colnames(udmat))
-        
         x.train <- xmat[(1:n)[folds != inner], ]
         x.test <- xmat[(1:n)[folds == inner], ]
         ud.train <- udmat[(1:n)[folds != inner], ]
         ud.test <- udmat[(1:n)[folds == inner], ]
-        c.train <- clinical[(1:n)[folds != inner], ]
-        c.test <- clinical[(1:n)[folds == inner], ]
         y.train <- y[(1:n)[folds != inner]]
         y.test <- y[(1:n)[folds == inner]]
         
         # (0) Clinical offset
-        fit.clin <- glm(y~., data = c.train, family = "gaussian")
-        clin_offset_coefs <- fit.clin$coefficients[-1]
-        clin_offset_train <- apply(c.train %>% select(-y), 2, to_numeric) %*% clin_offset_coefs
-        
+        if(is.null(data.obj[["clinical"]])){
+          clin_offset_coefs <- rep(0, k)
+          clin_offset_train <- rep(0, sum(folds!=inner))
+        }else{
+          c.train <- clinical[(1:n)[folds != inner], ]
+          c.test <- clinical[(1:n)[folds == inner], ]
+          fit.clin <- glm(y~., data = c.train, family = "gaussian")
+          clin_offset_coefs <- fit.clin$coefficients[-1]
+          clin_offset_train <- apply(c.train %>% select(-y), 2, to_numeric) %*% clin_offset_coefs        
+        }
+
         # (1) Lasso regression
         fit1.lasso <- glmnet(y = y.train, x = x.train, family = family, alpha = alpha1, nlambda = nl1, offset = clin_offset_train)
         
@@ -598,7 +619,9 @@ perform_lridge <- function(data.obj, family = "gaussian", nlambda = c(10,10), cv
         } # now we have all nl1*nl2*npf betas               
         
         # validation: compute prediction error
-        clin_offset_test <- apply(c.test %>% select(-y), 2, to_numeric) %*% clin_offset_coefs
+        if(!is.null(data.obj[["clinical"]])){
+          clin_offset_test <- apply(c.test %>% select(-y), 2, to_numeric) %*% clin_offset_coefs
+        }else{clin_offset_test <- rep(0, sum(folds==inner))}
         for(i in 1:nl1){
           for(ii in 1:nl2){
             yhat.test <- cbind(1, ud.test) %*% beta[ , nl2*(i-1)+ii] + clin_offset_test
@@ -622,9 +645,14 @@ perform_lridge <- function(data.obj, family = "gaussian", nlambda = c(10,10), cv
   rownames(beta) <- c("(Intercept)", colnames(udmat))
   
   # (0) Clinical offset
-  fit.clin <- glm(y~., data = clinical, family = "gaussian")
-  clin_offset_coefs <- fit.clin$coefficients[-1]
-  clin_offset <- apply(clinical %>% select(-y), 2, to_numeric) %*% clin_offset_coefs
+  if(is.null(data.obj[["clinical"]])){
+    clin_offset_coefs <- rep(0, k)
+    clin_offset <- rep(0, n)
+  }else{
+    fit.clin <- glm(y~., data = clinical, family = "gaussian")
+    clin_offset_coefs <- fit.clin$coefficients[-1]
+    clin_offset <- apply(clinical %>% select(-y), 2, to_numeric) %*% clin_offset_coefs
+  }
   
   lambda <- df <- array(NA, c(nl1, nl2, npf))
   for(p in 1:npf){
@@ -689,10 +717,14 @@ predict_lridge <- function(obj, newdata, type = "link"){
   x <- newdata[["x"]]
   u <- newdata[["u"]]
   d <- newdata[["d"]]
-  clinical <- newdata[["clinical"]]
-  xmat <- cbind(u, d)
+  xmat <- cbind(u, d)  
   
-  new_offset <- apply(clinical,2,to_numeric)%*% obj$fit$clin_offset_coefs
+  if(!is.null(data.obj[["clinical"]])){
+    clinical <- data.frame("y" = y, data.obj[["clinical"]])
+    new_offset <- apply(clinical,2,to_numeric)%*% obj$fit$clin_offset_coefs
+  }else{
+    new_offset <- rep(0, nrow(x))
+  }
   x <-cbind(1, xmat[,names(obj$fit$coefficients[obj$fit$coefficients != 0])[-1]])
   beta <- obj$fit$coefficients[obj$fit$coefficients != 0]
   linpred <- x %*% beta + new_offset
@@ -715,14 +747,14 @@ perform_rlasso <- function(data.obj, family = "gaussian", nlambda = c(10, 10), c
   x <- data.obj[["x"]]
   u <- data.obj[["u"]]
   d <- data.obj[["d"]]
-  y <- data.obj[["y"]]
-  clinical <- data.frame("y" = y, data.obj[["clinical"]])
+  y <- data.obj[["y"]]  
   xmat <- as.matrix(x)  
-  udmat <- as.matrix(cbind(u, d))  
+  udmat <- as.matrix(cbind(u, d)) 
+  if(!is.null(data.obj[["clinical"]])) clinical <- data.frame("y" = y, data.obj[["clinical"]])
   
-  n<-nrow(x)
-  k<-ncol(x)
-  kclin <- ncol(clinical)
+  n <- nrow(x)
+  k <- ncol(x)
+  kclin <- ifelse(is.null(data.obj[["clinical"]]), 0, ncol(clinical))
   npf <- length(pflist)
   
   # get number of lambdas
@@ -749,13 +781,18 @@ perform_rlasso <- function(data.obj, family = "gaussian", nlambda = c(10, 10), c
         ud.test <- udmat[(1:n)[folds == inner], ]
         y.train <- y[(1:n)[folds != inner]]
         y.test <- y[(1:n)[folds == inner]]
-        c.train <- clinical[(1:n)[folds != inner], ]
-        c.test <- clinical[(1:n)[folds == inner], ]
         
         # (0) Clinical offset
-        fit.clin <- glm(y~., data=c.train, family="gaussian")
-        clin_offset_coefs <- fit.clin$coefficients[-1]
-        clin_offset_train <- apply(c.train %>% select(-y), 2, to_numeric) %*% clin_offset_coefs
+        if(is.null(data.obj[["clinical"]])){
+          clin_offset_coefs <- rep(0, k)
+          clin_offset_train <- rep(0, sum(folds!=inner))
+        }else{
+          c.train <- clinical[(1:n)[folds != inner], ]
+          c.test <- clinical[(1:n)[folds == inner], ]
+          fit.clin <- glm(y~., data = c.train, family = "gaussian")
+          clin_offset_coefs <- fit.clin$coefficients[-1]
+          clin_offset_train <- apply(c.train %>% select(-y), 2, to_numeric) %*% clin_offset_coefs        
+        }
         
         # (1) Ridge regression
         fit1.ridge <- glmnet(y = y.train, x = ud.train, family = family, alpha = alpha1, nlambda = nl1, 
@@ -777,7 +814,9 @@ perform_rlasso <- function(data.obj, family = "gaussian", nlambda = c(10, 10), c
         } # now we have all nl1*nl2 betas               
         
         # validation: compute prediction error
-        clin_offset_test <- apply(c.test %>% select(-y), 2, to_numeric) %*% clin_offset_coefs
+        if(!is.null(data.obj[["clinical"]])){
+          clin_offset_test <- apply(c.test %>% select(-y), 2, to_numeric) %*% clin_offset_coefs
+        }else{clin_offset_test <- rep(0, sum(folds==inner))}
         for(i in 1:nl1){
           for(ii in 1:nl2){
             yhat.test <- cbind(1, x.test) %*% beta[ , nl2 * (i - 1) + ii] + clin_offset_test
@@ -801,11 +840,16 @@ perform_rlasso <- function(data.obj, family = "gaussian", nlambda = c(10, 10), c
   
   ## Final model
   # (0) Clinical offset
-  fit.clin <- glm(y~., data = clinical, family = "gaussian")
-  clin_offset_coefs <- fit.clin$coefficients[-1]
-  clin_offset <- apply(clinical %>% select(-y), 2, to_numeric) %*% clin_offset_coefs
+  if(is.null(data.obj[["clinical"]])){
+    clin_offset_coefs <- rep(0, k)
+    clin_offset <- rep(0, n)
+  }else{
+    fit.clin <- glm(y~., data = clinical, family = "gaussian")
+    clin_offset_coefs <- fit.clin$coefficients[-1]
+    clin_offset <- apply(clinical %>% select(-y), 2, to_numeric) %*% clin_offset_coefs
+  }
   
-  beta<-array(0, c(ncol(xmat) + 1, nl1 * nl2, npf))
+  beta <- array(0, c(ncol(xmat) + 1, nl1 * nl2, npf))
   rownames(beta) <- c("(Intercept)", colnames(xmat))
   lambda <- df <- array(NA, c(nl1, nl2, npf))
   for(p in 1:npf){
@@ -860,10 +904,14 @@ perform_rlasso <- function(data.obj, family = "gaussian", nlambda = c(10, 10), c
 
 predict_rlasso <- function(obj, newdata, type = "link"){
   x<-newdata[["x"]]
-  clinical <- newdata[["clinical"]]
   xmat <- as.matrix(x)  
   
-  new_offset <- apply(clinical, 2, to_numeric) %*% obj$fit$clin_offset_coefs
+  if(!is.null(data.obj[["clinical"]])){
+    clinical <- data.frame("y" = y, data.obj[["clinical"]])
+    new_offset <- apply(clinical,2,to_numeric)%*% obj$fit$clin_offset_coefs
+  }else{
+    new_offset <- rep(0, nrow(x))
+  }
   x<-cbind(1, xmat[, names(obj$fit$coefficients[obj$fit$coefficients != 0])[-1]])
   beta <- obj$fit$coefficients[obj$fit$coefficients != 0]
   linpred <- x %*% beta + new_offset
@@ -889,12 +937,12 @@ perform_rgarrote <- function(data.obj, family = "gaussian", nlambda = c(10,10), 
   u <- data.obj[["u"]]
   d <- data.obj[["d"]]
   y <- data.obj[["y"]]
-  clinical <- data.frame("y" = y, data.obj[["clinical"]])
-  udmat <- as.matrix(cbind(u, d))  
+  udmat <- as.matrix(cbind(u, d)) 
+  if(!is.null(data.obj[["clinical"]])) clinical <- data.frame("y" = y, data.obj[["clinical"]])
   
   n <- nrow(u)
   k <- ncol(u)
-  kclin <- ncol(clinical)
+  kclin <- ifelse(is.null(data.obj[["clinical"]]), 0, ncol(clinical))
   npf <- length(pflist)
     
   # get number of lambdas
@@ -917,15 +965,20 @@ perform_rgarrote <- function(data.obj, family = "gaussian", nlambda = c(10,10), 
         beta <- matrix(0, ncol(udmat) + 1, nl1 * nl2)
         ud.train <- udmat[(1:n)[folds != inner], ]
         ud.test <- udmat[(1:n)[folds == inner], ]
-        c.train <- clinical[(1:n)[folds != inner], ]
-        c.test <- clinical[(1:n)[folds == inner], ]
         y.train <- y[(1:n)[folds != inner]]
         y.test <- y[(1:n)[folds == inner]]
         
         # (0) Clinical offset
-        fit.clin <- glm(y~., data = c.train, family = "gaussian")
-        clin_offset_coefs <- fit.clin$coefficients[-1]
-        clin_offset_train <- apply(c.train %>% select(-y), 2, to_numeric) %*% clin_offset_coefs
+        if(is.null(data.obj[["clinical"]])){
+          clin_offset_coefs <- rep(0, k)
+          clin_offset_train <- rep(0, sum(folds!=inner))
+        }else{
+          c.train <- clinical[(1:n)[folds != inner], ]
+          c.test <- clinical[(1:n)[folds == inner], ]
+          fit.clin <- glm(y~., data = c.train, family = "gaussian")
+          clin_offset_coefs <- fit.clin$coefficients[-1]
+          clin_offset_train <- apply(c.train %>% select(-y), 2, to_numeric) %*% clin_offset_coefs        
+        }
         
         # (1) Ridge regression
         fit1.ridge <- glmnet(y = y.train, x = ud.train, family = family, alpha = alpha1, standardize = FALSE,
@@ -951,7 +1004,9 @@ perform_rgarrote <- function(data.obj, family = "gaussian", nlambda = c(10,10), 
         } # now we have all nl1*nl2 betas               
         
         # validation: compute prediction error
-        clin_offset_test <- apply(c.test %>% select(-y),2,to_numeric) %*% clin_offset_coefs
+        if(!is.null(data.obj[["clinical"]])){
+          clin_offset_test <- apply(c.test %>% select(-y), 2, to_numeric) %*% clin_offset_coefs
+        }else{clin_offset_test <- rep(0, sum(folds==inner))}
         for(i in 1:nl1){
           for(ii in 1:nl2){
             yhat.test <- cbind(1, ud.test) %*% beta[, nl2*(i - 1) + ii] + clin_offset_test
@@ -973,13 +1028,20 @@ perform_rgarrote <- function(data.obj, family = "gaussian", nlambda = c(10,10), 
   index <- which(prederror == min(prederror), arr.ind = TRUE) 
   se.prederror <- sqrt(prederror2 - prederror^2)
 
+  
+  #----------- check garrote 03.08.
   ## Final model
   # (0) Clinical offset
-  fit.clin <- glm(y~., data = clinical, family = "gaussian")
-  clin_offset_coefs <- fit.clin$coefficients[-1]
-  clin_offset <- apply(clinical %>% select(-y),2,to_numeric)%*% clin_offset_coefs
+  if(is.null(data.obj[["clinical"]])){
+    clin_offset_coefs <- rep(0, k)
+    clin_offset <- rep(0, n)
+  }else{
+    fit.clin <- glm(y~., data = clinical, family = "gaussian")
+    clin_offset_coefs <- fit.clin$coefficients[-1]
+    clin_offset <- apply(clinical %>% select(-y), 2, to_numeric) %*% clin_offset_coefs
+  }
   
-  beta<-array(0, c(ncol(udmat) + 1, nl1 * nl2, npf))
+  beta <- array(0, c(ncol(udmat) + 1, nl1 * nl2, npf))
   rownames(beta) <- c("(Intercept)", colnames(udmat))
   lambda <- df <- array(NA, c(nl1, nl2, npf))
   for(p in 1:npf){
@@ -1004,8 +1066,6 @@ perform_rgarrote <- function(data.obj, family = "gaussian", nlambda = c(10,10), 
       fit2.lasso[[i]] <- glmnet(y = y, x = udmat.gar, family = family, alpha = alpha2, 
                                lower.limits = 0, standardize = FALSE, nlambda = nl2, offset = clin_offset)
       lambda[i, ,p] <- fit2.lasso[[i]]$lambda
-      
-      #_____ STOPPED _______________________
       
       for(ii in 1:nl2){
         beta[, nl2 *(i - 1) + ii, p] <- c(coef(fit2.lasso[[i]])[1, ii], # intercept
@@ -1033,15 +1093,15 @@ perform_rgarrote <- function(data.obj, family = "gaussian", nlambda = c(10,10), 
   
 
   res <- list(call = match.call(), family = family, lambda = lambda, coefficients = beta, glmnet.fit.ridge = fit1.ridge, 
-              glmnet.fit.lasso = fit.lasso, k = k, kclin = kclin, df = df, cv.pred.err = prederr,
+              glmnet.fit.lasso = fit2.lasso, k = k, kclin = kclin, df = df, cv.pred.err = prederr,
               cv.rsquare = rsquare, se.pred.err = se.prederror, 
               fit = list(udmat = udmat, udmat.gar = udmat.gar, lambda = lambda, lambda.min = lambda.min, 
                      clin_offset = clin_offset, clin_offset_coefs = clin_offset_coefs,
                      coefficients = coeffs, beta = beta, 
                      index.lambda.min = c(index[1], index[2]), 
                      fitted.values = fitted.values))
-  attr(res,"class") <-" ridge-garrote"
-  attr(res,"penalty") <- penalty
+  attr(res, "class") <- "ridge-garrote"
+  attr(res, "penalty") <- penalty
   
   return(res)
 }
@@ -1050,23 +1110,18 @@ perform_rgarrote <- function(data.obj, family = "gaussian", nlambda = c(10,10), 
 predict_rgarrote<-function(obj, newdata, lambda = "lambda.min", type = "link"){
   u <- newdata[["u"]]
   d <- newdata[["d"]]
-  clinical <- newdata[["clinical"]]
   udmat <- cbind(u, d)
   
-  new_offset <- apply(clinical, 2, to_numeric) %*% obj$fit$clin_offset_coefs
-  if(lambda == "lambda.min"){
-    x <- cbind(1, udmat[, names(obj$fit$coefficients[obj$fit$coefficients != 0])[-1]])
-    beta <- obj$fit$coefficients[obj$fit$coefficients != 0]
-    linpred <- x %*% beta + new_offset
-  } else if (lambda == "L1norm"){
-    x <- cbind(1, udmat[, names(obj$fit$coeffs.L1norm[obj$fit$coeffs.L1norm != 0])[-1]])
-    beta <- obj$fit$coeffs.L1norm[obj$fit$coeffs.L1norm != 0]
-    linpred <- x %*% beta + new_offset
+  if(!is.null(data.obj[["clinical"]])){
+    clinical <- data.frame("y" = y, data.obj[["clinical"]])
+    new_offset <- apply(clinical,2,to_numeric)%*% obj$fit$clin_offset_coefs
+  }else{
+    new_offset <- rep(0, nrow(x))
   }
-  else if (lambda == "all"){
-    x <- cbind(1, udmat[, names(obj$fit$coefficients)[-1]])
-    linpred <- x %*% obj$coefficients + new_offset
-  }
+  x <- cbind(1, udmat[, names(obj$fit$coefficients[obj$fit$coefficients != 0])[-1]])
+  beta <- obj$fit$coefficients[obj$fit$coefficients != 0]
+  linpred <- x %*% beta + new_offset
+
   if(type == "response" & obj$family == "binomial") linpred <- plogis(linpred)
   return(linpred)
 }

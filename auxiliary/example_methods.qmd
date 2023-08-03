@@ -177,8 +177,7 @@ for(i in 1:ncv){
                    "d" = data.obj$d[(1:n)[folds == i], ])
   
   # Ridge
-  fit.ridge.cv <- perform_penreg(obj.train, family="gaussian", cv=ncv, R=nR, 
-                                 penalty = "combined")
+  fit.ridge.cv <- perform_penreg(obj.train, family="gaussian", cv=ncv, R=nR, penalty = "combined")
   
   # Predictions
   data.obj$pred.ridge.cb[(1:n)[folds == i]] <- predict_penreg(obj = fit.ridge.cv,

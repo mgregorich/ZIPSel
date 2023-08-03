@@ -9,12 +9,16 @@
 
 simulate_scenario <- function(scen){
   
+  # Generate large validation dataset
+  data.val <- data_generation(n=10000)
+  data.val <- generate_dataobj(y = data.val$data_ana$y, x = data.val$data_ana$x, clinical = NULL)
+  
   # Run replications
   res_all <-  lapply(1:scen$iter, function(x){
-    data_iter <- data_generation(n=scen$n, p=scen$p)
-    res_iter <-  data_analysis(df=data_iter)
+    data_iter <- data_generation(n = 200)
+    res_iter <-  data_analysis(df = data_iter, data.val = data.val)
     data_iter$i <- res_iter$i <- x
-    return(list("data_gen"=data_iter, "data_ana"=res_iter)) 
+    return(list("data_gen" = data_iter, "data_ana" = res_iter)) 
   })
   
   data_gen_all <- do.call(rbind, lapply(res_all, function(x) x[[1]]))
@@ -26,11 +30,10 @@ simulate_scenario <- function(scen){
 
 
 # ============================ Data generation =================================
-data_generation <- function(n, p, rhomat, power, xmean, epsmean, epsstd, coreps){
+data_generation <- function(n){
   
-  # Step 1: Generate Spike at Zero Variables
   # Remove later (parameter input for function)
-  n <- 200     # Number of observations
+  # n <- 200     # Number of observations
   p <- 100     # Number of variables
   groupsize <- c(25,25,25,25)
   ngroups <- 4
@@ -98,33 +101,70 @@ data_generation <- function(n, p, rhomat, power, xmean, epsmean, epsstd, coreps)
 
 
 # ============================ Data analysis =================================
-data_analysis <- function(df){
+data_analysis <- function(df, data.val){
+  
+  # Parameter (remove later)
+  n = length(df$data_ana$y)
+  p = ncol(df$data_ana$x)
+  ncv = 10
+  nR  = 2
+  folds <- sample(rep(1:ncv, ceiling(n/ncv)))[1:n]
+  pflist <- list(c(1,2), c(2,1), c(1,3))
   
    # Prepare data
-  x <- df$data_ana$x
-  colnames(x) <- paste0("x.", 1:ncol(x))
-  d <- (x != 0)*1
-  colnames(d) <- paste0("d.", 1:ncol(d))
-  utmp <- apply(x, 2, function(x) ifelse(x == 0, 0, log2(x)))
-  u <- apply(utmp, 2, function(x) ifelse(x == 0, mean(x[x > 0]), x))
-  colnames(u) <- paste0("u.", 1:ncol(u))
-  global_min <- min(x[x > 0])
-  ximp <- apply(x, 2, function(x) log2(ifelse(x == 0, global_min*(1/2), x)))
+  data.obj <- generate_dataobj(y = df$data_ana$y, x = df$data_ana$x, clinical = NULL)
+  
+  
+  # CV 
+  methnames <- c("lasso", "ridge", "lridge", "rlasso", "rgarrote")
+  tbl_perf <- data.frame("methods" = rep(methnames, each = 2)[-1],
+                         "penalty" = rep(c("combined", "component"), times = 5)[-2],
+                         R2 = NA, RMSE = NA, MAE = NA, C = NA, CS = NA)
+    
+  # --- Lasso
+  fit.lasso.cv <- perform_penreg(data.obj, family = "gaussian", alpha1 = 1, cv = ncv, R = nR, penalty = "combined")
+  data.val$pred.lasso <- predict_penreg(obj = fit.lasso.cv, newdata = data.val, model = "lasso")
+  tbl_perf[1, 4:9] <- eval_performance(pred = data.val$pred.lasso, obs = data.val$y)
+  
+  # --- Ridge (penalty: combined and component)
+  fit.ridge.cv <- perform_penreg(data.obj, family = "gaussian", cv = ncv, R = nR, penalty = "combined")
+  data.val$pred.ridge.cb <- predict_penreg(obj = fit.ridge.cv, newdata = data.val, model = "ridge")
+  tbl_perf[2, 4:9] <- eval_performance(pred = data.val$pred.ridge.cb, obs = data.val$y)
+  
+  fit.ridge.cv <- perform_penreg(data.obj, family = "gaussian", cv = ncv, R = nR, penalty = "component", pflist = pflist)
+  data.val$pred.ridge.cp <- predict_penreg(obj=fit.ridge.cv, newdata=data.val, model="ridge")
+  tbl_perf[3, 4:9] <- eval_performance(pred = data.val$pred.ridge.cp, obs = data.val$y)
+  
+  
+  # --- Lasso-ridge (penalty: combined and component)
+  fit.lridge.cv <- perform_lridge(data.obj, family = "gaussian", cv = ncv, R = nR, nlambda = c(10, 10), penalty = "combined")
+  data.val$pred.lridge.cb <- predict_lridge(obj = fit.lridge.cv, newdata = data.val)
+  tbl_perf[4, 4:9] <- eval_performance(pred = data.val$pred.lridge.cb, obs = data.val$y)
+  
+  fit.lridge.cv <- perform_lridge(data.obj, family = "gaussian", cv = ncv, R = nR, nlambda = c(10, 10), penalty = "component", pflist = pflist)
+  data.val$pred.lridge.cp <- predict_lridge(obj = fit.lridge.cv, newdata = data.val)
+  tbl_perf[5, 4:9] <- eval_performance(pred = data.val$pred.lridge.cp, obs = data.val$y)
+  
+  
+  # --- Ridge-lasso (penalty: combined and component)
+  fit.rlasso.cv <- perform_rlasso(data.obj, family = "gaussian", cv = ncv, R = nR, nlambda = c(10, 10), penalty = "combined")
+  data.val$pred.rlasso.cb <- predict_rlasso(obj = fit.rlasso.cv, newdata = data.val)
+  tbl_perf[6, 4:9] <- eval_performance(pred = data.val$pred.rlasso.cb, obs = data.val$y)
+  
+  fit.rlasso.cv <- perform_rlasso(data.obj, family = "gaussian", cv = ncv, R = nR, nlambda = c(10, 10), penalty = "component", pflist = pflist)
+  data.val$pred.rlasso.cp <- predict_rlasso(obj = fit.rlasso.cv, newdata = data.val)
+  tbl_perf[7, 4:9] <- eval_performance(pred = data.val$pred.rlasso.cp, obs = data.val$y)
+  
+  
+  # --- Ridge-garrote
+  fit.rgarrote.cv <- perform_rgarrote(data.obj, family = "gaussian", cv = ncv, R = nR, nlambda = c(10,10), penalty="combined")
+  data.val$pred.rgarrote.cb <- predict_rgarrote(obj = fit.rgarrote.cv, newdata = data.val)
+  tbl_perf[8, 4:9] <- eval_performance(pred = data.val$pred.rgarrote.cb, obs = data.val$y)
+  
+  fit.rgarrote.cv <- perform_rgarrote(data.obj, family = "gaussian", cv = ncv, R = nR, nlambda = c(10,10), penalty="component", pflist = pflist)
+  data.val$pred.rgarrote.cp <- predict_rgarrote(obj = fit.rgarrote.cv, newdata = data.val)
+  tbl_perf[9, 4:9] <- eval_performance(pred = data.val$pred.rgarrote.cp, obs = data.val$y)
 
-  data.obj <- list("y" = df$data_ana$y, "x" = ximp, "u" = u, "d" = d, "clinical" = NULL)
-  
-  # lasso
-  
-  # ridge
-  
-  # ridge-garrote
-  
-  
-  # ridge-lasso
-  
-  
-  # lasso-ridge
-  
   
   # Merge results
   
