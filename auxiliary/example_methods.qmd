@@ -959,7 +959,7 @@ for(i in 1:ncv){
   train <- dataset[(1:n)[folds != i], ]
   test <- dataset[(1:n)[folds == i], ]
   
-  fit.rf <- ranger(y~., data = train %>% select(-pred.rf.notune), num.trees = 5000)
+  fit.rf <- ranger(y~., data = train %>% select(-pred.rf.notune), num.trees = 500)
   
   # Predictions
    dataset$pred.rf.notune[(1:n)[folds == i]] <- predict(fit.rf,  data = test %>% select(-c(y, pred.rf.notune)))$predictions

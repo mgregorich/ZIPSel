@@ -20,24 +20,26 @@ format:
     self-contained: true
 ---
 
-
-
 # Preliminaries
 
 ```{r}
 rm(list=ls())
 pacman::p_load(ggplot2, dplyr, tidyverse, gt, MASS, patchwork)
-source(here::here("src","functions.R"))
+source(here::here("src","functions_aux.R"))
 set.seed(666)
 
 # Parameters
 n = 200
 p = 100
 k = 4
+a = 0.5
+xmean = -2.5
+epsstd = 2.5
+beta_max = 5
+sampthresh = .05
 groupsize = c(25, 25, 25, 25)
 prop.nonzero <- 0.5
 ```
-
 
 # Hub correlation structure
 
@@ -69,6 +71,7 @@ pc1
 ```
 
 # Log-normal data
+
 ```{r}
 # Normally distributed data
 data_vars <- mvrnorm(n = n, mu = rep(-2.5, nrow(hub_cormat)), Sigma = hub_cormat)
@@ -78,8 +81,6 @@ data_vars <- mvrnorm(n = n, mu = rep(-2.5, nrow(hub_cormat)), Sigma = hub_cormat
 data_logvars <- exp(data_vars)
 data_logvars[data_logvars>quantile(data_logvars, 0.99)] <- 0
 ```
-
-
 
 ```{r}
 p1 <- data_vars %>%
@@ -108,7 +109,6 @@ p2 <- data_logvars %>%
 p1 + p2
 ```
 
-
 ```{r}
 cormat <- cor(data_logvars)
 melted_cormat <- reshape2::melt(round(cormat,4))
@@ -131,25 +131,38 @@ D <- rbinom(n*p, size=1, prob=matrix(prop.nonzero, n, k, byrow=TRUE))
 X <- data_logvars * D
 ```
 
-
 ```{r}
-# Extract hubs
-hubindex <- cumsum(groupsize)-groupsize+1
+# Normally distributed data
+data_vars <- mvrnorm(n = n, mu = rep(xmean, p), Sigma = hub_cormat)
+
+# Log normally distributed data
+data_logvars <- exp(data_vars)
+
+# Structural zeros
+D <- sapply(rep(rev(seq(0.3, 1, length.out=p/4)),4), function(x) rbinom(n, size=1, prob=x)) # per group linear increase in zero-inflation 0-80%
+X <- data_logvars * D
+
+# Extract hubs and indices of true predictors (scenario D)
+hubindex <- cumsum(groupsize) - groupsize + 1 # identify index of hub
+nelem <- c(5,5,5,5)  # number of true predictors in each group
+truepredindex <- c(apply(cbind(hubindex, hubindex + nelem - 1),1, function(x) seq(x[1], x[2], 1)))
+ptrue <- length(truepredindex)
 
 # Generate coeffs and error 
 beta_X <- beta_D <- rep(0, p)
-beta_X[hubindex] <- beta_D[hubindex] <- coefs
-eps <- rlnorm(n, meanlog = epsmean, sd=epsstd)
-hist(eps)
-```
+beta_X[truepredindex] <- c(sapply(nelem, function(x) rev(seq(0, beta_max, length.out = x+1)[-1])))
+beta_D[truepredindex] <-  c(sapply(nelem, function(x) sample(seq(0, beta_max, length.out = x+1)[-1], x)))
 
+# Generate outcome: a controls influence of X and D components
+eps <- rnorm(n, mean = 0, sd = epsstd)
+
+```
 
 ```{r}
 # Generate outcome
-y <- X %*% beta_X + D %*% beta_D + eps
+y <- a * X %*% beta_X + (1-a) * D %*% beta_D  + eps
 hist(y, main="Outcome variable y")
 ```
-
 
 ```{r}
 # Sampling zeros for data analyst
@@ -160,7 +173,6 @@ plot(x=1:ncol(Xs), sort(apply(Xs,2, function(x) sum(x==0)/length(x))))
 ```
 
 # More technical data generation
-
 
 ```{r}
 # Compute mean and covariance for X when Y=exp(X)~logMN(mu, sigma) with mu and sigma given
@@ -183,4 +195,40 @@ compute_mnxparams <- function(rho_logx, sd_logx, mu_logx){
   }
   return(list(mu_x, cov_x))
 }
+```
+
+# Simdata approach
+
+```{r}
+hub_cormat <- simcor.H(k = k, size = groupsize, rho = rbind(c(.8,.2), c(.8,.2), c(.8,.2), c(.4,.2)), power = 1,
+                     epsilon = .075, eidim = 2)
+hub_cormat <- Matrix::nearPD(hub_cormat, base.matrix = TRUE, keepDiag = TRUE)$mat
+ggcorrplot::ggcorrplot(hub_cormat)
+```
+
+```{r}
+distlist <- rep(list(function(x) qlnorm(x, meanlog = 0, sdlog = 1)),nrow(hub_cormat))
+dsgn = simdata::simdesign_norta(cor_target_final = hub_cormat, dist = distlist, 
+                                transform_initial = data.frame,
+                                names_final = paste0("V",1:nrow(hub_cormat)), seed_initial = 1)
+sim_data = simdata::simulate_data(dsgn, 100, seed = 2)
+```
+
+```{r}
+corsim <- cor(sim_data)
+ggcorrplot::ggcorrplot(corsim, lab = FALSE)
+```
+
+```{r}
+sim_data %>%
+  data.frame() %>%
+  mutate(ID=1:nrow(.)) %>%
+  pivot_longer(cols=!ID, values_to="Values", names_to="Variable") %>%
+  mutate_at(vars(Values), as.numeric) %>%
+  ggplot(aes(x=Values, group=ID, col=ID)) +
+  geom_density() +
+  scale_x_continuous("Value") +
+  scale_y_continuous("Density") +
+  theme_bw() +
+  theme(text=element_text(size=14), legend.position = "None")
 ```

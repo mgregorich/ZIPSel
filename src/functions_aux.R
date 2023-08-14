@@ -29,6 +29,14 @@ intersect_decimals <- function(x, y, digits = 10) {
   return(intersect(x_rounded, y_rounded))
 }
 
+partial <- function(f, ...) {
+  f_args <- list(...)
+  
+  function(...) {
+    do.call(f, c(f_args, list(...)))
+  }
+}
+
 # ========================== FIGURES ============================================================
 
 plot_calibration <- function(pred, obs, fig.title = ""){
@@ -59,7 +67,7 @@ c_index <- function(pred, obs){
 
 
 eval_performance <- function(pred, obs){
-  r2 <- cor(pred,obs, use="pairwise.complete.obs")^2
+  r2 <- ifelse(sd(pred)<0.001, NA, cor(pred,obs, use="pairwise.complete.obs")^2)
   CS <- lm(obs ~ pred)$coefficients[2]
   Cind <- c_index(pred=pred, obs=obs)
   rmse.val <- sqrt(mean((pred-obs)^2))
@@ -71,6 +79,54 @@ eval_performance <- function(pred, obs){
                     C = Cind,
                     CalbSlope=CS) 
   return(res)
+}
+
+eval_selection <- function(model, penalty, true_coef, pred_coef, groupsize, p){
+  
+  # true_coef <- df$coef
+  # pred_coef <- fit.lasso.cv$coefficients
+  # groupsize = c(25,25,25,25)
+  
+  groupindices <- cbind(cumsum(groupsize)-groupsize+1, cumsum(groupsize))
+  betaD <- NA
+  if(length(pred_coef[-1])!=nrow(true_coef)){betaD <- pred_coef[(p+2):(2*p+1)]}
+  
+  pred_coef <- data.frame("beta_U"=pred_coef[2:(p+1)], "beta_D"=betaD)
+  
+  tbl_varsel <- cbind.data.frame(model, penalty, matrix(NA, nrow=nrow(true_coef), ncol=4))
+  colnames(tbl_varsel) <- c("model", "penalty", "truedir_var", "falsedir_var", "truepos_var", "trueneg_var")
+  for(i in 1:nrow(true_coef)){ 
+    # Component-specific direction
+    truedir_var <- (((true_coef$beta_X[i] >= true_coef$beta_D[i]) & (pred_coef$beta_U[i] >= pred_coef$beta_D[i])) | 
+                      ((true_coef$beta_X[i] <= true_coef$beta_D[i]) & (pred_coef$beta_U[i] <= pred_coef$beta_D[i])))*1
+    falsedir_var <- (((true_coef$beta_X[i] <= true_coef$beta_D[i]) & (pred_coef$beta_U[i] >= pred_coef$beta_D[i])) | 
+                       ((true_coef$beta_X[i] >= true_coef$beta_D[i]) & (pred_coef$beta_U[i] <= pred_coef$beta_D[i])))*1
+    if(is.na(pred_coef[i,2])) truedir_var <- falsedir_var <- NA
+    
+    # Peptide-specific
+    truepos_var <- ((true_coef$beta_X[i]!=0 | true_coef$beta_D[i]!=0) & (pred_coef$beta_U[i]!=0))*1
+    trueneg_var <- ((true_coef$beta_X[i]==0 & true_coef$beta_D[i]==0) & (pred_coef$beta_U[i]==0))*1
+    
+    tbl_varsel[i, 3:6] <- c(truedir_var, falsedir_var, truepos_var, trueneg_var)
+  }
+  
+  tbl_groupsel <- cbind.data.frame(model, penalty,matrix(NA, nrow=length(groupsize), ncol=4))
+  colnames(tbl_groupsel) <- c("model", "penalty", "group", "truepos_any", "truepos_group", "trueneg_group")
+  for(j in 1:length(groupsize)){
+    true_group_eff <- any(true_coef$beta_X[groupindices[j,1]:groupindices[j,2]] !=0 | true_coef$beta_D[groupindices[j,1]:groupindices[j,2]] !=0)
+    pred_group_eff_U <- any(pred_coef$beta_U[groupindices[j,1]:groupindices[j,2]] !=0)
+    pred_group_eff_D <- any(pred_coef$beta_D[groupindices[j,1]:groupindices[j,2]] !=0)
+    pred_group_eff <- ifelse(is.na(pred_group_eff_D), pred_group_eff_U, any(pred_group_eff_U, pred_group_eff_D))
+    trueposany_group <- (true_group_eff & pred_group_eff)*1
+    
+    truepos_group <- sum(tbl_varsel[groupindices[j,1]:groupindices[j,2],"truepos_var"])/length(tbl_varsel[groupindices[j,1]:groupindices[j,2],"truepos_var"])
+    trueneg_group <- sum(tbl_varsel[groupindices[j,1]:groupindices[j,2],"trueneg_var"])/length(tbl_varsel[groupindices[j,1]:groupindices[j,2],"trueneg_var"])
+    
+    tbl_groupsel[j,3:6] <- c(j,trueposany_group, truepos_group, trueneg_group)
+  }
+  
+  out <- list("var_selection" = tbl_varsel, "group_selection" = tbl_groupsel)
+  return(out)
 }
 
 generate_dataobj <- function(y, x, clinical = NULL){
@@ -109,14 +165,16 @@ simcor.H <- function(k=4, size=c(10,10,10,10),
   for (i in 1:(k) ){
     elemsize <- size[i]*(size[i]-1)/2
     corelem <-rho.func(rho[i,1],rho[i,2],power=1.5, p=elemsize) 
-    cormat <- matrix(1, ncol=size[i], nrow=size[i])
-    cormat[lower.tri(cormat)] <- corelem
-    cormat[upper.tri(cormat)] <- t(cormat[lower.tri(cormat)])
-    
+    cormat <- matrix(0, ncol=size[i], nrow=size[i])
+    cormat[upper.tri(cormat)] <- corelem
+    diag(cormat) <- 1
+    cormat[lower.tri(cormat)] <- t(cormat)[lower.tri(cormat)]
+
     if (i==1){bigcor[1:size[1], 1:size[1]] <- cormat}
     if (i!=1){bigcor[(sum(size[1:(i-1)]) + 1):sum(size[1:i]),
                      (sum(size[1:(i-1)]) + 1):sum(size[1:i])] <- cormat}
   }
+  if(!isSymmetric.matrix(bigcor)) stop("Not symmetric!")
   diag(bigcor) <- 1 - epsilon
   
   ### adding noise to the correlation matrix
@@ -128,6 +186,8 @@ simcor.H <- function(k=4, size=c(10,10,10,10),
   
   bigE <- t(eivect) %*% eivect
   cor.nz <- bigcor + bigE
+  if(!isSymmetric.matrix(cor.nz)) stop("Not symmetric!")
+  
   return(cor.nz)
   }
   
@@ -477,38 +537,41 @@ perform_penreg <- function(data.obj, penalties = 1, family = "gaussian", penalty
     pf <- pflist[[p]]
     pfvector <- rep(pf, each=k)[1:ncol(varmat)]
     
-    ## CV ridge model with offset
+    ## CV model with offset
     lambdas <- cvmerror <- matrix(0, R, nl1) 
     
     for(outer in 1:R){
       set.seed(outer)
-      # CV ridge model with offset
-      cv_ridge <- cv.glmnet(x = varmat, y = y, alpha = alpha1, standardize = FALSE,
+      # CV model with offset
+      cv_model <- cv.glmnet(x = varmat, y = y, alpha = alpha1, standardize = FALSE,
                             offset = clin_offset, penalty.factor = pfvector, nfolds = cv, nlambda = nl1)
-      cvmerror[outer, ] <- cv_ridge$cvm
+      cvmerror[outer, ] <- cv_model$cvm
     }
     prederror[p, ] <- colSums(cvmerror) / R
-    lambdas_pf[p, ] <- cv_ridge$lambda
+    lambdas_pf[p, ] <- cv_model$lambda
   }
   index <- which(prederror == min(prederror), arr.ind = TRUE)
+  index <- index[1,]
   lambda.min <- lambdas_pf[index]
-  pf.min <- pflist[[index[1,1]]]
+  pf.min <- pflist[[index[1]]]
   pfvector.min <- rep(pf.min, each=k)[1:ncol(varmat)]
   
   ## Final model
-  # CV ridge model with offset
-  fit.ridge <- glmnet(x = varmat, y = y, alpha = alpha1, standardize = FALSE,
-                      offset = clin_offset, penalty.factor = pfvector.min, nfolds = cv, lambda = nl1)
-  fitted.vals <- predict(fit.ridge, s = lambda.min, newx = varmat, newoffset = clin_offset)  
-  beta <- coef(fit.ridge)[ ,1]
+  # CV model with offset
+  fit.model <- glmnet(x = varmat, y = y, alpha = alpha1, standardize = FALSE,
+                      offset = clin_offset, penalty.factor = pfvector.min, nfolds = cv, nlambda = nl1)
+  beta <- coef(fit.model)
+  coeffs <- beta[, index[2]]
+  fitted.values <- cbind(1, varmat) %*% coeffs + clin_offset
   
-  res<-list(call = match.call(), family = family, lambda = lambdas_pf, coefficients = beta, glmnet.fit.ridge = fit.ridge, 
-            k = k, kclin = kclin, df = df, cv.pred.err = prederror, se.pred.err = 0, # se error?
-            fit=list(xmat = varmat, lambda = lambdas_pf, lambda.min = lambda.min, penalty = pfvector.min,
-                     clin_offset = clin_offset, clin_offset_coefs = clin_offset_coefs,
-                     coefficients = beta, index.lambda.min = index, 
-                     fitted.values = fitted.values))
-  attr(res, "class")<-ifelse(alpha1 == 0, "ridge", "lasso")
+  
+  res <- list(call = match.call(), family = family, lambda = lambdas_pf, coefficients = coeffs, glmnet.fit.model = fit.model, 
+              k = k, kclin = kclin, df = df, cv.pred.err = prederror, se.pred.err = 0, # se error?
+              fit=list(xmat = varmat, lambda = lambdas_pf, lambda.min = lambda.min, penalty = pfvector.min,
+                       clin_offset = clin_offset, clin_offset_coefs = clin_offset_coefs,
+                       coefficients = coeffs, beta = beta, index.lambda.min = index, 
+                       fitted.values = fitted.values))
+  attr(res, "class") <- ifelse(alpha1 == 0, "ridge", "lasso")
   attr(res, "penalty") <- penalty
   return(res)
 }
@@ -522,7 +585,7 @@ predict_penreg <- function(obj, newdata, type = "link", model = "ridge"){
     varmat <- cbind(u, d)
   }else{ varmat <- x }
   
-  if(!is.null(data.obj[["clinical"]])){
+  if(!is.null(newdata[["clinical"]])){
     clinical <- newdata[["clinical"]]
     new_offset <- apply(clinical, 2, to_numeric) %*% obj$fit$clin_offset_coefs
   }else{
@@ -603,7 +666,7 @@ perform_lridge <- function(data.obj, family = "gaussian", nlambda = c(10,10), cv
         fit1.lasso <- glmnet(y = y.train, x = x.train, family = family, alpha = alpha1, nlambda = nl1, offset = clin_offset_train)
         
         # (2) Ridge regression 
-        for(i in 2:nl1){   # firsz lambda picks model with only intercept
+        for(i in 2:nl1){   # first lambda picks model with only intercept
           # Include u and d part of selected x variables
           b.lasso <- coef(fit1.lasso)[ ,i]
           nonzero.coefs <- names(b.lasso)[which(b.lasso != 0)]
@@ -637,11 +700,11 @@ perform_lridge <- function(data.obj, family = "gaussian", nlambda = c(10,10), cv
   } # penalty loop end
   
   # Index of minimal cvm
-  index <- which(prederror == min(prederror), arr.ind = TRUE) 
+  index <- which(prederror == min(prederror), arr.ind = TRUE) [1,]
   se.prederr <- sqrt(prederror2 - prederror^2)
   
   ## Final betas for all lambda/penalty combinations
-  beta<-array(0, c(ncol(udmat) + 1, nl1 * nl2, npf))
+  beta <- array(0, c(ncol(udmat) + 1, nl1 * nl2, npf))
   rownames(beta) <- c("(Intercept)", colnames(udmat))
   
   # (0) Clinical offset
@@ -682,9 +745,7 @@ perform_lridge <- function(data.obj, family = "gaussian", nlambda = c(10,10), cv
       lambda[i, , p] <- fit2.ridge[[i]]$lambda
       beta[rownames(coef(fit2.ridge[[i]])), (nl2 * (i - 1) + 1):(nl2 * (i - 1) + nl1), p] <- as.matrix(coef(fit2.ridge[[i]]))          
     } # now we have all nl1*nl2*npf beta vectors  
-    
-    coeffs <- beta[ , nl2 * (index[1] - 1) + index[2], p]
-    names(coeffs) <- rownames(beta) <- c("(Intercept)", colnames(u), colnames(d))
+    rownames(beta) <- c("(Intercept)", colnames(u), colnames(d))
     df[ , , p] <- matrix(unlist(lapply(fit2.ridge, function(X) X$df)), nrow = nrow(lambda), ncol = ncol(lambda),byrow = TRUE)
   }
   
@@ -693,21 +754,25 @@ perform_lridge <- function(data.obj, family = "gaussian", nlambda = c(10,10), cv
   lambda.min <- c(as.numeric(rownames(lambda)[index[1]]), as.numeric(lambda[index[1], index[2], index[3]]))
   names(lambda.min) <- c("lasso", "ridge")
   
+  # Coefs for best lambda
+  coeffs <- beta[ , nl2 * (index[1] - 1) + index[2], index[3]]
+  names(coeffs) <- c("(Intercept)", colnames(u), colnames(d))
+  
   # component-specific penalty factor
   pf.min <- pflist[[index[3]]]
   names(pf.min) <- c("pf U", "pf D") 
   
   # fitted values
-  fitted.values <- cbind(1, udmat) %*% beta[ , nl2 * (index[1] - 1) + index[2], index[3]] + clin_offset
+  fitted.values <- cbind(1, udmat) %*% coeffs + clin_offset
   
-  res<-list(call = match.call(), family = family, lambda = lambda, coefficients = beta, glmnet.fit1.lasso = fit1.lasso, glmnet.fit2.ridge = fit2.ridge, 
-            k = k, kclin = kclin, df = df,  cv.pred.err = prederr,se.pred.err = se.prederr, 
-            fit = list(xmat = xmat, udmat = udmat, lambda = lambda, lambda.min = lambda.min, pf.min = pf.min,
-                     clin_offset = clin_offset, clin_offset_coefs = clin_offset_coefs,
-                     coefficients = coeffs, beta = beta, 
-                     index.lambda.min = c(index[1], index[2]), 
-                     fitted.values = fitted.values)) 
-  attr(res,"class")<-"lasso-ridge"
+  res <- list(call = match.call(), family = family, lambda = lambda, coefficients = coeffs, glmnet.fit1.lasso = fit1.lasso, glmnet.fit2.ridge = fit2.ridge, 
+              k = k, kclin = kclin, df = df,  cv.pred.err = prederr,se.pred.err = se.prederr, 
+              fit = list(xmat = xmat, udmat = udmat, lambda = lambda, lambda.min = lambda.min, pf.min = pf.min,
+                         clin_offset = clin_offset, clin_offset_coefs = clin_offset_coefs,
+                         coefficients = coeffs, beta = beta, 
+                         index.lambda.min = c(index[1], index[2]), 
+                         fitted.values = fitted.values)) 
+  attr(res,"class") <- "lasso-ridge"
   attr(res,"penalty")<- penalty
   
   return(res)
@@ -719,7 +784,7 @@ predict_lridge <- function(obj, newdata, type = "link"){
   d <- newdata[["d"]]
   xmat <- cbind(u, d)  
   
-  if(!is.null(data.obj[["clinical"]])){
+  if(!is.null(newdata[["clinical"]])){
     clinical <- data.frame("y" = y, data.obj[["clinical"]])
     new_offset <- apply(clinical,2,to_numeric)%*% obj$fit$clin_offset_coefs
   }else{
@@ -873,15 +938,18 @@ perform_rlasso <- function(data.obj, family = "gaussian", nlambda = c(10, 10), c
       fit2.alasso[[i]] <- glmnet(y = y, x = xmat, family = family, alpha = alpha2, nlambda = nl2, offset = clin_offset, penalty.factor = penalty_lasso)
       lambda[i, , p] <- fit2.alasso[[i]]$lambda
       beta[1:(ncol(xmat) + 1),(nl2 * (i - 1) + 1):(nl2 * (i - 1) + nl1), p] <- as.matrix(coef(fit2.alasso[[i]]))
-    } # now we have all nl1*nl2 beta vectors               
-    coeffs <- beta[, nl2 * (index[1] - 1) + index[2], p]
-    names(coeffs) <- rownames(beta) <- c("(Intercept)", colnames(x))
+    } # now we have all nl1*nl2*npf beta vectors               
+    rownames(beta) <- c("(Intercept)", colnames(x))
     df[,, p] <- matrix(unlist(lapply(fit2.alasso, function(X) X$df)), nrow = nrow(lambda), ncol = ncol(lambda), byrow = TRUE)
   }
   ## Return
   # lasso and ridge lambda
   lambda.min <- c(as.numeric(rownames(lambda)[index[1]]), as.numeric(lambda[index[1], index[2], index[3]]))
   names(lambda.min)<-c("ridge","lasso")
+  
+  # Coeffs for best lambda
+  coeffs <- beta[, nl2 * (index[1] - 1) + index[2], index[3]]
+  names(coeffs) <- c("(Intercept)", colnames(x))
   
   # component-specific penalty factor
   pf.min <- pflist[[index[3]]]
@@ -890,15 +958,16 @@ perform_rlasso <- function(data.obj, family = "gaussian", nlambda = c(10, 10), c
   # fitted values
   fitted.values <- cbind(1, xmat) %*% beta[, nl2 * (index[1] - 1) + index[2], index[3]] + clin_offset
   
-  res<-list(call = match.call(), family = family, lambda = lambda, coefficients = beta, glmnet.fit1.ridge = fit1.ridge, glmnet.fit.alasso = fit2.alasso, 
+  res<-list(call = match.call(), family = family, lambda = lambda, coefficients = coeffs, glmnet.fit1.ridge = fit1.ridge, glmnet.fit.alasso = fit2.alasso, 
             k = k, kclin = kclin, df = df,  cv.pred.err = prederror,
             cv.rsquare = rsquare_pf, se.pred.err = se.prederror, 
-            fit = list(xmat = xmat, lambda = lambda, lambda.min = lambda.min, 
+            fit = list(xmat = xmat, lambda = lambda, lambda.min = lambda.min, pf.min = pf.min,
                      clin_offset = clin_offset, clin_offset_coefs = clin_offset_coefs,
-                     coefficients = coeffs, beta = beta, 
+                     coefficients = coeffs, beta = beta, # coefs ... coefs oft best lambda combination, beta.. all coefs for all lambdas
                      index.lambda.min = c(index[1], index[2]), 
                      fitted.values = fitted.values))
   attr(res,"class")<-"ridge-lasso"
+  attr(res,"penalty")<- penalty
   return(res)
 }
 
@@ -906,7 +975,7 @@ predict_rlasso <- function(obj, newdata, type = "link"){
   x<-newdata[["x"]]
   xmat <- as.matrix(x)  
   
-  if(!is.null(data.obj[["clinical"]])){
+  if(!is.null(newdata[["clinical"]])){
     clinical <- data.frame("y" = y, data.obj[["clinical"]])
     new_offset <- apply(clinical,2,to_numeric)%*% obj$fit$clin_offset_coefs
   }else{
@@ -1041,7 +1110,7 @@ perform_rgarrote <- function(data.obj, family = "gaussian", nlambda = c(10,10), 
     clin_offset <- apply(clinical %>% select(-y), 2, to_numeric) %*% clin_offset_coefs
   }
   
-  beta <- array(0, c(ncol(udmat) + 1, nl1 * nl2, npf))
+  beta <- array(0, c(ncol(udmat) + 1, nl1 * nl2, npf)) # all coefs for lambdas
   rownames(beta) <- c("(Intercept)", colnames(udmat))
   lambda <- df <- array(NA, c(nl1, nl2, npf))
   for(p in 1:npf){
@@ -1075,8 +1144,7 @@ perform_rgarrote <- function(data.obj, family = "gaussian", nlambda = c(10,10), 
         
       }
     } # now we have all nl1*nl2 beta vectors               
-    coeffs <- beta[, nl2 * (index[1] - 1) + index[2], p]
-    names(coeffs) <- rownames(beta) <- c("(Intercept)", colnames(u), colnames(d))
+    rownames(beta) <- c("(Intercept)", colnames(u), colnames(d))
     df[,, p] <- matrix(unlist(lapply(fit2.lasso, function(X) X$df)), nrow = nrow(lambda), ncol = ncol(lambda), byrow = TRUE)
   }
   ## Return
@@ -1084,39 +1152,42 @@ perform_rgarrote <- function(data.obj, family = "gaussian", nlambda = c(10,10), 
   lambda.min <- c(as.numeric(rownames(lambda)[index[1]]), as.numeric(lambda[index[1], index[2], index[3]]))
   names(lambda.min)<-c("ridge","lasso")
   
+  # Coefficients of best model
+  coeffs <- beta[, nl2 * (index[1] - 1) + index[2], index[3]]
+  names(coeffs) <- c("(Intercept)", colnames(u), colnames(d))
+  
   # component-specific penalty factor
   pf.min <- pflist[[index[3]]]
   names(pf.min) <- c("pf U", "pf D") 
   
   # fitted values
-  fitted.values <- cbind(1, udmat) %*% beta[, nl2 * (index[1] - 1) + index[2], index[3]] + clin_offset
+  fitted.values <- cbind(1, udmat) %*% coeffs + clin_offset
   
 
-  res <- list(call = match.call(), family = family, lambda = lambda, coefficients = beta, glmnet.fit.ridge = fit1.ridge, 
+  res <- list(call = match.call(), family = family, lambda = lambda, coefficients = coeffs, glmnet.fit.ridge = fit1.ridge, 
               glmnet.fit.lasso = fit2.lasso, k = k, kclin = kclin, df = df, cv.pred.err = prederr,
               cv.rsquare = rsquare, se.pred.err = se.prederror, 
-              fit = list(udmat = udmat, udmat.gar = udmat.gar, lambda = lambda, lambda.min = lambda.min, 
+              fit = list(udmat = udmat, udmat.gar = udmat.gar, lambda = lambda, lambda.min = lambda.min, pf.min = pf.min,
                      clin_offset = clin_offset, clin_offset_coefs = clin_offset_coefs,
                      coefficients = coeffs, beta = beta, 
-                     index.lambda.min = c(index[1], index[2]), 
+                     index.lambda.min = c(index[1], index[2], index[3]), 
                      fitted.values = fitted.values))
   attr(res, "class") <- "ridge-garrote"
   attr(res, "penalty") <- penalty
-  
   return(res)
 }
 
 
-predict_rgarrote<-function(obj, newdata, lambda = "lambda.min", type = "link"){
+predict_rgarrote <- function(obj, newdata, lambda = "lambda.min", type = "link"){
   u <- newdata[["u"]]
   d <- newdata[["d"]]
   udmat <- cbind(u, d)
   
-  if(!is.null(data.obj[["clinical"]])){
+  if(!is.null(newdata[["clinical"]])){
     clinical <- data.frame("y" = y, data.obj[["clinical"]])
     new_offset <- apply(clinical,2,to_numeric)%*% obj$fit$clin_offset_coefs
   }else{
-    new_offset <- rep(0, nrow(x))
+    new_offset <- rep(0, nrow(udmat))
   }
   x <- cbind(1, udmat[, names(obj$fit$coefficients[obj$fit$coefficients != 0])[-1]])
   beta <- obj$fit$coefficients[obj$fit$coefficients != 0]

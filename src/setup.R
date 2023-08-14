@@ -5,31 +5,67 @@
 #' ==============================================================================
 
 
-# Packages
-pacman::p_load(ggplot2, parallel, future.apply, stringr, kableExtra,
-               openxlsx, dplyr, tidyverse, tableone, concreg, Matrix,
-               glmnet)
-
-# Paths
-sim.date <- Sys.Date()
-sim.file <- paste0("sim_", sim.date,"/")
-sim.path <- here::here("output", sim.file)
-
-# R files
-source(here::here("src","functions.R"))
-
 # Parameter
-iter = 1000
-n = c(100,200,400)         # sample size
-p = c(200,400)             # number of candidate predictors
-m = 4                      # number of modules
-
+set.seed(666)
+iter = 2
+n <- c(100,200,400)         # sample size
+p <- c(200,400)             # number of candidate predictors
+ngroups <- 4
+rhomat <- list(rbind(c(.8,.2), c(.8,.2), c(.8,.2), c(.4,.2)))   # correlation ranges in each group
+xmean <- 0                  # mean of candidate predictors
+xstd <- 0.5
+beta_max <- 5               # maximum coefficient
+a <- 0.5                    # controls balance of U and D influence on y
+epsstd <- 2.5
+prop.nonzero <- 0.5         
+sampthresh <- 0.05
 
 # Scenario matrix
 scenarios <- expand.grid(
   iter = iter,
   n = n,
   p = p,
-  m = m,
-  setting = setting)
+  ngroups = ngroups,
+  rhomat = rhomat,
+  xmean = xmean,
+  xstd = xstd,
+  beta_max = beta_max,
+  a = a,
+  epsstd = epsstd,
+  prop.nonzero = prop.nonzero,
+  sampthresh = sampthresh) 
+
+
+
+# Data simulation design
+data_design <- scenarios %>% 
+  data.frame() %>%
+  dplyr::select(p, xmean, xstd, ngroups) %>%
+  filter(!duplicated(p, xmean, xstd, ngroups))
+list_design <- list()
+data_design$dsgn <- NA
+for(i in 1: nrow(data_design)){
+  print(paste0("Sim design: ",i, "/", nrow(data_design)))
+  # Groupwise Hub correlation design filled with toeplitz
+  hub_cormat <- simcor.H(k = data_design[i,]$ngroups, size = rep(data_design[i,]$p/data_design[i,]$ngroups,4),
+                         rho = rhomat[[1]], power = 1, epsilon = 0.075, eidim = 2)
+  if(!matrixcalc::is.positive.definite(hub_cormat)) hub_cormat <- nearPD(hub_cormat, base.matrix = TRUE, keepDiag = TRUE)$mat
+  
+  # Data design
+  xmean <- data_design[i,]$xmean
+  xstd <- data_design[i,]$xstd
+  distlist <- rep(list(partial(function(x, meanlog, sdlog) qlnorm(x, meanlog = meanlog, sdlog = sdlog),
+                               meanlog = xmean, sdlog = xstd)), nrow(hub_cormat)) 
+  dsgn = simdata::simdesign_norta(cor_target_final = hub_cormat, dist = distlist, 
+                                  transform_initial = data.frame,
+                                  names_final = paste0("V",1:nrow(hub_cormat)), seed_initial = 1) 
+  list_design[[i]] <- dsgn
+  data_design[i,]$dsgn <- i
+}
+
+scenarios <- merge(scenarios, data_design, by=c("p", "xmean", "xstd", "ngroups"))
+setup <- list("scenarios"=scenarios, "list_design"=list_design)
+saveRDS(setup, here::here("src", "scenario_setup.rds"))
+
+
 

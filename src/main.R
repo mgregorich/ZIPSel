@@ -6,22 +6,32 @@
 
 rm(list=ls())
 
+# Packages
+pacman::p_load(ggplot2, parallel, future.apply, stringr, kableExtra,
+               openxlsx, dplyr, tidyverse, tableone, concreg, Matrix,
+               glmnet, MASS, ranger, simdata)
+
+# Paths
+sim.date <- Sys.Date()
+sim.file <- paste0("sim_", sim.date,"/")
+sim.path <- here::here("output", sim.file)
+
+# R files
+source(here::here("src","functions_aux.R"))
+source(here::here("src","functions_sim.R"))
+
 # Load & save setup
-source("src/setup.R")
-
-# Create sim folder
-if(dir.exists(sim.path)){invisible(do.call(file.remove, list(list.files(sim.path, full.names = T))))
-}else{dir.create(sim.path)}
-
-setup <- readLines("src/setup.R")
-write.table(setup, file = here::here(sim.path, "info_setup.txt"))
+#source("src/setup.R")
+setup <- readRDS(here::here("src", "scenario_setup.rds"))
+scenarios <- setup[[1]]
+sim_design <- setup[[2]]
 
 # ======================= Simulation ===========================================
 
 # --- Run through all scenarios
 # plan(multisession, workers = detectCores()*.5)
 # invisible(future_lapply(1:nrow(scenarios), function(k) {
-#   tryCatch({simulate_scenario(scn=scenarios[k,])
+#   tryCatch({simulate_scenario(scn=scenarios[k,], sim_design=sigm_design[[scenarios[k,]$dsgn]])
 #   }, error = function(e) {
 #     # log the error message to a file
 #     cat(paste0("Error in scenario k=",k,": ", e$message, "\n"), file = paste0(sim.path, "/error_log.txt"), append = TRUE)
