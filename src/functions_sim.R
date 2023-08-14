@@ -7,48 +7,60 @@
 
 # =========================== Run scenario =====================================
 
-simulate_scenario <- function(scn, sim_design){
+simulate_scenario <- function(scn, dsgn){
   
   # Remove later
-  scn=scenarios[1,]
-  dsgn=sim_design[[scenarios[1,]$dsgn]]
+  # scn=scenarios[1,]
+  # dsgn=sim_design[[scenarios[1,]$dsgn]]
   
-  groupsize <- rep(scn$p/scn$ngroups.x, scn$ngroups.x)
+  filename <- paste0("sim_n", scn$n, "_p", scn$p, "_beta", scn$beta_max, "_a", scn$a, 
+                     "_epsstd", scn$epsstd, "_propnz", scn$prop.nonzero, "_sampthresh", scn$sampthresh, ".rds")
 
   # Generate large validation dataset
-  data.val <- data_generation(dsgn = dsgn, n = 10000, p=scn$p, ngroups = scn$ngroups,
-                              xmean = scn$xmean, beta_max = scn$beta_max, a = scn$a, epsstd = scn$epsstd, 
-                              coreps = scn$coreps, prop.nonzero = scn$prop.nonzero, sampthresh = scn$sampthresh)
+  data.val <- data_generation(dsgn = dsgn, n = 10000, p=scn$p, beta_max = scn$beta_max, a = scn$a, epsstd = scn$epsstd, 
+                              prop.nonzero = scn$prop.nonzero, sampthresh = scn$sampthresh)
   data.val <- generate_dataobj(y = data.val$data_ana$y, x = data.val$data_ana$x, clinical = NULL)
   
   # Run replications
   res_all <-  lapply(1:scn$iter, function(x){
-    data_iter <- data_generation(dsgn = dsgn, n = scn$n, p = scn$p, ngroups = scn$ngroups, 
-                                 xmean = scn$xmean, beta_max = scn$beta_max, a = scn$a, epsstd = scn$epsstd, 
-                                 coreps=scn$coreps, prop.nonzero=scn$prop.nonzero, sampthresh=scn$sampthresh)
-    res_iter <-  data_analysis(df = data_iter, data.val = data.val, ngroups = scn$ngroups, n = scn$n, p = scn$p, 
+    data_iter <- data_generation(dsgn = dsgn, n = scn$n, p = scn$p, beta_max = scn$beta_max, a = scn$a, epsstd = scn$epsstd, 
+                                 prop.nonzero=scn$prop.nonzero, sampthresh=scn$sampthresh)
+    res_iter <-  data_analysis(df = data_iter, data.val = data.val, n = scn$n, p = scn$p, 
                                ncv = 10, nR = 2, nlams = 10, pflist = list(c(1,2), c(2,1), c(1,3)))
     data_iter <- mapply(cbind, data_iter, "i" = x, SIMPLIFY = F)
     res_iter <- mapply(cbind, res_iter, "i" = x, SIMPLIFY = F)
     
-    return(list("data_gen" = data_iter, "data_ana" = res_iter)) 
+    return(c(data_iter, res_iter)) 
   })
   
-  data_gen_all <- do.call(rbind, lapply(res_all, function(x) x[[1]]))
-  data_ana_all <- do.call(rbind, lapply(res_all, function(x) x[[2]]))
+  # Summarize
+  res_dataana <- do.call(rbind, lapply(res_all, function(x) data.frame(cbind("y"=x$data_ana[1,1][[1]], x$data_ana[2,1][[1]], "i"=x$data_ana[1,2][[1]]))))
+  res_datagen <- do.call(rbind, lapply(res_all, function(x) x$data_gen))
+  res_truecoef <- do.call(rbind, lapply(res_all, function(x) x$true_coef))
+  res_performance <- do.call(rbind, lapply(res_all, function(x) x$est_perf))
+  res_estcoef <- do.call(rbind, lapply(res_all, function(x) x$est_coef))
+  res_varsel <- do.call(rbind, lapply(res_all, function(x) x$est_varsel))
+  res_groupsel <- do.call(rbind, lapply(res_all, function(x) x$est_groupsel))
   
-  return(list("data_gen_all"=data_gen_all, "data_ana_all"=data_ana_all))
+  # Save results
+  list_results <- list(res_datagen, res_dataana, res_truecoef, res_estcoef, res_performance, res_varsel, res_groupsel)
+  saveRDS(list_results, here::here(sim.path, paste0(filename , ".rds")))  
+  return(list_results)
   
 }
 
 
 # ============================ Data generation =================================
-data_generation <- function(dsgn, n, p, xmean, xstd, beta_max, a, epsstd, ngroups, coreps, prop.nonzero, sampthresh){
+data_generation <- function(dsgn, n, p, beta_max, a, epsstd, prop.nonzero, sampthresh){
   
   # # Remove later (parameter input for function)
-  # dsgn=dsgn; n=scn$n; p=scn$p; ngroups=scn$ngroups; xmean=scn$xmean; xstd=scn$xstd;
-  # beta_max=scn$beta_max; a=scn$a; epsstd=scn$epsstd; coreps=scn$coreps;
+  # dsgn=dsgn; n=scn$n; p=scn$p; ngroups=scn$ngroups; 
   # prop.nonzero=scn$prop.nonzero; sampthresh=scn$sampthresh
+  
+  # Parameter
+  xmean = 0
+  xstd = 0.5
+  ngroups = 4
   
   # Groupwise Hub correlation design filled with toeplitz
   data_logvars <- simulate_data(dsgn, n, seed = 2)
@@ -58,7 +70,7 @@ data_generation <- function(dsgn, n, p, xmean, xstd, beta_max, a, epsstd, ngroup
   X <- as.matrix(data_logvars * D)
   
   # Extract hubs and indices of true predictors (scenario D)
-  groupsize <- scn$p/scn$ngroups
+  groupsize <- p/ngroups
   hubindex <- cumsum(groupsize) - groupsize + 1 # identify index of hub
   nelem <- c(5,5,5,5)  # number of true predictors in each group
   truepredindex <- c(apply(cbind(hubindex, hubindex + nelem - 1),1, function(x) seq(x[1], x[2], 1)))
@@ -86,7 +98,7 @@ data_generation <- function(dsgn, n, p, xmean, xstd, beta_max, a, epsstd, ngroup
   
   out <- list("data_ana" = list("y" = y, "x" = Xs),
               "data_gen" = data.frame("y" = y, "X_true" = X, "D_true" = D, "eps" = eps),
-              "coef" = data.frame("beta_X" = beta_X, "beta_D" = beta_D),
+              "true_coef" = data.frame("beta_X" = beta_X, "beta_D" = beta_D),
               "add" = list("adjR2" = adjR2))
   return(out)
 }
@@ -95,7 +107,7 @@ data_generation <- function(dsgn, n, p, xmean, xstd, beta_max, a, epsstd, ngroup
 
 
 # ============================ Data analysis =================================
-data_analysis <- function(df, data.val, n, p, ngroups, ncv=10, nR=2, nlams=10, pflist=list(c(1,2), c(2,1), c(1,3))){
+data_analysis <- function(df, data.val, n, p,  ncv=10, nR=2, nlams=10, pflist=list(c(1,2), c(2,1), c(1,3))){
   
   # Remove later
   # df = data_iter
@@ -104,7 +116,10 @@ data_analysis <- function(df, data.val, n, p, ngroups, ncv=10, nR=2, nlams=10, p
   # ngroups=scn$ngroups
   # ncv=10; nR=2; nlams=10; pflist=list(c(1,2), c(2,1), c(1,3))
   
-   # Prepare data
+  # Parameter
+  ngroups = 4
+  
+  # Prepare data
   data.obj <- generate_dataobj(y = df$data_ana$y, x = df$data_ana$x, clinical = NULL)
   
   # CV 
@@ -112,7 +127,7 @@ data_analysis <- function(df, data.val, n, p, ngroups, ncv=10, nR=2, nlams=10, p
   tbl_perf <- data.frame("methods" = rep(methnames, each = 2)[-c(1,12)],
                          "penalty" = c(rep(c("combined", "component"), times = 5)[-2], "-"),
                          R2 = NA, RMSE = NA, MAE = NA, C = NA, CS = NA)
-  tbl_coef <- data_iter$coef
+  tbl_coef <- df$coef
   
   # --- Lasso
   fit.lasso.cv <- perform_penreg(data.obj, family = "gaussian", alpha1 = 1, nl1 = nlams, cv = ncv, R = nR, penalty = "combined")
@@ -186,13 +201,31 @@ data_analysis <- function(df, data.val, n, p, ngroups, ncv=10, nR=2, nlams=10, p
   for(l in 1:length(list_models)){
     fit.model <-  list_models[[l]]
     list_sel[[l]] <- eval_selection(model = attr(fit.model, "class"), penalty = attr(fit.model, "penalty"), 
-                                    true_coef = df$coef, pred_coef = fit.model$coefficients, groupsize = groupsize, p = p)
+                                    true_coef = df$true_coef, pred_coef = fit.model$coefficients, groupsize = groupsize, p = p)
   }
   tbl_varsel <- do.call(rbind, lapply(list_sel, function(x) x[[1]]))
   tbl_groupsel <- do.call(rbind, lapply(list_sel, function(x) x[[2]])) 
   
-  out <- list("performance" = tbl_perf, 
-              "coefficients" = tbl_coef,
-              "selection" = list("variable" = tbl_varsel, "group" = tbl_groupsel))
+  out <- list("est_perf" = tbl_perf, 
+              "est_coef" = tbl_coef,
+              "est_varsel" = tbl_varsel, 
+              "est_groupsel" = tbl_groupsel)
+  return(out)
+}
+
+# ============================ Evaluate all scenarios =================================
+
+evaluate_scenarios <- function(sim.files, sim.path){
+  #' Preparation of simulation results for analysis
+  
+  res <- lapply(sim.files, function(x) readRDS(here::here(sim.path, x)))
+  tbl_perf <- do.call(rbind, lapply(res, function(x) x[[3]]))
+  tbl_truecoef <- do.call(rbind, lapply(res, function(x) x[[4]]))
+  tbl_estcoef <- do.call(rbind, lapply(res, function(x) x[[5]]))
+  tbl_varsel <- do.call(rbind, lapply(res, function(x) x[[6]]))
+  tbl_groupsel <- do.call(rbind, lapply(res, function(x) x[[7]]))
+  
+  out <- list("tbl_perf"=tbl_perf, "tbl_truecoef"=tbl_truecoef, "tbl_estcoef"=tbl_estcoef, 
+              "tbl_varsel"=tbl_varsel, "tbl_groupsel"=tbl_groupsel)
   return(out)
 }

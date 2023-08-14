@@ -1,0 +1,45 @@
+---
+title: "Simulation study - Variable selection for 'too' many zero-inflated predictors (ZIPSel)"
+author:
+  - name: "Mariella Gregorich"
+    affiliation: "Medical University of Vienna, Center for Medical Data Science"
+date: last-modified
+categories: [2023, simulation study, ZIPSel, R]
+description: "Classification: confidential"
+editor: visual
+theme: cosmo
+toc: true  
+number-sections: true
+colorlinks: true
+highlight-style: pygments
+format:
+  html: 
+    code-fold: true
+    code-tools: true
+    html-math-method: katex
+    self-contained: true
+---
+
+
+```{r setup, include=FALSE}
+rm(list=ls())
+knitr::opts_chunk$set(echo = F, warning=F, message=F)
+
+source(here::here("src","functions_sim.R"))
+source(here::here("src","functions_aux.R"))
+#source(here::here("src","setup.R"))
+
+pacman::p_load(ggplot2, parallel, future.apply, stringr, kableExtra,
+               openxlsx, dplyr, tidyverse, simdata)
+
+# Paths
+out.path <- "output"
+sim.date <- Sys.Date()
+sim.file <- paste0("sim_", sim.date,"/")
+sim.path <- here::here(out.path, sim.file)
+ggcols <- c("black", "deepskyblue3", "royalblue3", "mediumorchid3", "grey45")
+
+# Read in results
+tbl_res <- readRDS(here::here(sim.path, "tbl_scenario_results.rds"))
+```
+
