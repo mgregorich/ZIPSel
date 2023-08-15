@@ -10,6 +10,7 @@ rm(list=ls())
 pacman::p_load(ggplot2, parallel, future.apply, stringr, kableExtra,
                openxlsx, dplyr, tidyverse, tableone, concreg, Matrix,
                glmnet, MASS, ranger, simdata)
+options(dplyr.summarise.inform = FALSE)
 
 # Paths
 sim.date <- Sys.Date()
@@ -29,6 +30,7 @@ source(here::here("src","functions_sim.R"))
 setup <- readRDS(here::here("src", "scenario_setup.rds"))
 scenarios <- setup[[1]]
 sim_design <- setup[[2]]
+scenarios$iter <- 2
 
 # ======================= Simulation ===========================================
 
@@ -47,4 +49,4 @@ plan(sequential)
 # --- Summarize all scenarios
 sim.files <- list.files(sim.path, pattern = "sim_")
 sim.all <- evaluate_scenarios(sim.files, sim.path)
-saveRDS(sim.all, here::here(sim.path, "tbl_scenario_results.rds"))  
+

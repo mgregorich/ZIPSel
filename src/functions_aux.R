@@ -81,19 +81,19 @@ eval_performance <- function(pred, obs){
   return(res)
 }
 
-eval_selection <- function(model, penalty, true_coef, pred_coef, groupsize, p){
+eval_selection <- function(model, penalty, varnames, true_coef, pred_coef, ngroups, p){
   
-  # true_coef <- df$true_coef; pred_coef <- fit.lasso.cv$coefficients; groupsize = c(25,25,25,25); p=scn$p; penalty="combined"; model="lasso"
+  # true_coef <- df$true_coef; pred_coef <- fit.lasso.cv$coefficients; varnames=tbl_coef$var; groupsize = c(25,25,25,25); p=scn$p; penalty="combined"; model="lasso"
   
-  
+  groupsize <- rep(p/ngroups, ngroups)
   groupindices <- cbind(cumsum(groupsize)-groupsize+1, cumsum(groupsize))
   betaD <- NA
   if(length(pred_coef[-1])!=nrow(true_coef)){betaD <- pred_coef[(p+2):(2*p+1)]}
   
   pred_coef <- data.frame("beta_U"=pred_coef[2:(p+1)], "beta_D"=betaD)
   
-  tbl_varsel <- cbind.data.frame(model, penalty, matrix(NA, nrow=nrow(true_coef), ncol=5))
-  colnames(tbl_varsel) <- c("model", "penalty", "truedir_var", "falsedir_var", "truepos_var", "trueneg_var", "falsepos_var")
+  tbl_varsel <- cbind.data.frame(model, penalty, matrix(NA, nrow=nrow(true_coef), ncol=7))
+  colnames(tbl_varsel) <- c("model", "penalty", "varname","truedir_var", "falsedir_var", "truepos_var", "trueneg_var", "falsepos_var", "falseneg_var")
   for(i in 1:nrow(true_coef)){ 
     # Component-specific direction
     truedir_var <- (((true_coef$beta_X[i] >= true_coef$beta_D[i]) & (pred_coef$beta_U[i] >= pred_coef$beta_D[i])) | 
@@ -106,24 +106,26 @@ eval_selection <- function(model, penalty, true_coef, pred_coef, groupsize, p){
     truepos_var <- ((true_coef$beta_X[i]!=0 | true_coef$beta_D[i]!=0) & (pred_coef$beta_U[i]!=0))*1
     trueneg_var <- ((true_coef$beta_X[i]==0 & true_coef$beta_D[i]==0) & (pred_coef$beta_U[i]==0))*1
     falsepos_var <- ((true_coef$beta_X[i]==0 & true_coef$beta_D[i]==0) & (pred_coef$beta_U[i]!=0))*1
+    falseneg_var <- ((true_coef$beta_X[i]!=0 & true_coef$beta_D[i]!=0) & (pred_coef$beta_U[i]==0))*1
     
-    tbl_varsel[i, 3:7] <- c(truedir_var, falsedir_var, truepos_var, trueneg_var, falsepos_var)
+    tbl_varsel[i, 3:9] <- c(varnames[i], truedir_var, falsedir_var, truepos_var, trueneg_var, falsepos_var, falseneg_var)
   }
-  
-  tbl_groupsel <- cbind.data.frame(model, penalty,matrix(NA, nrow=length(groupsize), ncol=5))
-  colnames(tbl_groupsel) <- c("model", "penalty", "group", "truepos_any", "truepos_group", "trueneg_group", "falsepos_group")
-  for(j in 1:length(groupsize)){
+  tbl_varsel[,4:9] <- apply(tbl_varsel[,4:9], 2, to_numeric)
+  tbl_groupsel <- cbind.data.frame(model, penalty,matrix(NA, nrow=length(groupsize), ncol=6))
+  colnames(tbl_groupsel) <- c("model", "penalty", "group", "truepos_any", "truepos_group", "trueneg_group", "falsepos_group", "falseneg_group")
+  for(j in 1:ngroups){
     true_group_eff <- any(true_coef$beta_X[groupindices[j,1]:groupindices[j,2]] !=0 | true_coef$beta_D[groupindices[j,1]:groupindices[j,2]] !=0)
     pred_group_eff_U <- any(pred_coef$beta_U[groupindices[j,1]:groupindices[j,2]] !=0)
     pred_group_eff_D <- any(pred_coef$beta_D[groupindices[j,1]:groupindices[j,2]] !=0)
     pred_group_eff <- ifelse(is.na(pred_group_eff_D), pred_group_eff_U, any(pred_group_eff_U, pred_group_eff_D))
     trueposany_group <- (true_group_eff & pred_group_eff)*1
     
-    truepos_group <- sum(tbl_varsel[groupindices[j,1]:groupindices[j,2],"truepos_var"])/length(tbl_varsel[groupindices[j,1]:groupindices[j,2],"truepos_var"])
-    trueneg_group <- sum(tbl_varsel[groupindices[j,1]:groupindices[j,2],"trueneg_var"])/length(tbl_varsel[groupindices[j,1]:groupindices[j,2],"trueneg_var"])
-    falsepos_group <- sum(tbl_varsel[groupindices[j,1]:groupindices[j,2],"falsepos_var"])/length(tbl_varsel[groupindices[j,1]:groupindices[j,2],"falsepos_var"])
+    truepos_group <- sum(tbl_varsel[groupindices[j,1]:groupindices[j,2],"truepos_var"])/sum(true_coef[groupindices[j,1]:groupindices[j,2],"beta_X"]!=0)
+    trueneg_group <- sum(tbl_varsel[groupindices[j,1]:groupindices[j,2],"trueneg_var"])/sum(true_coef[groupindices[j,1]:groupindices[j,2],"beta_X"]==0)
+    falsepos_group <- sum(tbl_varsel[groupindices[j,1]:groupindices[j,2],"falsepos_var"])/sum(true_coef[groupindices[j,1]:groupindices[j,2],"beta_X"]==0)
+    falseneg_group <- sum(tbl_varsel[groupindices[j,1]:groupindices[j,2],"falseneg_var"])/sum(true_coef[groupindices[j,1]:groupindices[j,2],"beta_X"]!=0)
     
-    tbl_groupsel[j,3:7] <- c(j,trueposany_group, truepos_group, trueneg_group, falsepos_group)
+    tbl_groupsel[j,3:8] <- c(j, trueposany_group, truepos_group, trueneg_group, falsepos_group, falseneg_group)
   }
   
   out <- list("var_selection" = tbl_varsel, "group_selection" = tbl_groupsel)
