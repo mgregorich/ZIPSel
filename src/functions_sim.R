@@ -9,11 +9,11 @@
 
 simulate_scenario <- function(scn, dsgn){
   
-  # Remove later
+  ## Remove later
   # scn=scenarios[1,]
   # dsgn=sim_design[[scenarios[1,]$dsgn]]
   
-  filename <- paste0("sim_n", scn$n, "_p", scn$p, "_beta", scn$beta_max, "_a", scn$a, 
+  filename <- paste0("sim_i", scn$iter, "_n", scn$n, "_p", scn$p, "_beta", scn$beta_max, "_a", scn$a, 
                      "_epsstd", scn$epsstd, "_propnz", scn$prop.nonzero, "_sampthresh", scn$sampthresh, ".rds")
 
   # Generate large validation dataset
@@ -34,7 +34,7 @@ simulate_scenario <- function(scn, dsgn){
   })
   
   # Summarize
-  summarize_scenario(scn = scn, scn_res = scn_res)
+  summarize_scenario(filename = filename, scn = scn, scn_res = scn_res)
   
   return(NULL)
   
@@ -215,8 +215,9 @@ data_analysis <- function(df, data.val, n, p, ncv=10, nR=2, nlams=10, pflist=lis
 
 # ============================ Summarize scenario =================================
 
-summarize_scenario <- function(scn, scn_res){
+summarize_scenario <- function(filename, scn, scn_res){
  
+  options(dplyr.summarise.inform = FALSE)
   # Concatenate results in corresponding oject
   tbl_iters_dataana <- do.call(rbind, lapply(scn_res, function(x) data.frame(cbind("y" = x$data_ana[1,1][[1]], x$data_ana[2,1][[1]], "i" = x$data_ana[1,2][[1]]))))
   tbl_iters_datagen <- do.call(rbind, lapply(scn_res, function(x) x$data_gen))
@@ -225,7 +226,7 @@ summarize_scenario <- function(scn, scn_res){
   tbl_iters_groupsel <- do.call(rbind, lapply(scn_res, function(x) x$est_groupsel))
   tbl_iters_truecoef <- do.call(rbind, lapply(scn_res, function(x) x$true_coef)) %>% merge(scn, . )
   tbl_iters_estcoef <- do.call(rbind, lapply(scn_res, function(x) x$est_coef)) %>% merge(scn, . )
-  niter <- max(res_varsel$i)
+  niter <- max(tbl_iters_varsel$i)
   
   # -- Oracle 
   tbl_performance <- tbl_iters_performance %>%
@@ -264,7 +265,7 @@ summarize_scenario <- function(scn, scn_res){
   
   # Save results
   list_results <- list("results" = list("performance" = tbl_performance, "varsel" = tbl_varsel, "groupsel" = tbl_groupsel),
-                       "iters" = list("performance" = tbll_iters_performance, "varsel" = tbl_iters_varsel, "groupsel" = tbl_iters_groupsel),
+                       "iters" = list("performance" = tbl_iters_performance, "varsel" = tbl_iters_varsel, "groupsel" = tbl_iters_groupsel),
                        "data" = list("gen" = tbl_iters_datagen, "ana" = tbl_iters_dataana),
                        "coef" = list("truecoef" = tbl_iters_truecoef, "estcoef" = tbl_iters_estcoef))
   saveRDS(list_results, here::here(sim.path, paste0(filename , ".rds")))  
@@ -276,19 +277,21 @@ evaluate_scenarios <- function(sim.files, sim.path){
   #' Preparation of simulation results for analysis
   
   res <- lapply(sim.files, function(x) readRDS(here::here(sim.path, x)))
-  tbl_truecoef <- do.call(rbind, lapply(res, function(x) x[[3]]))
-  tbl_estcoef <- do.call(rbind, lapply(res, function(x) x[[4]]))
-  tbl_perf <- do.call(rbind, lapply(res, function(x) x[[5]]))
-  tbl_varsel <- do.call(rbind, lapply(res, function(x) x[[6]]))
-  tbl_groupsel <- do.call(rbind, lapply(res, function(x) x[[7]]))
+  tbl_perf <- do.call(rbind, lapply(res, function(x) x$results$performance))
+  tbl_varsel <- do.call(rbind, lapply(res, function(x) x$results$varsel))
+  tbl_groupsel <- do.call(rbind, lapply(res, function(x) x$results$groupsel))
+
+  tbl_iters_perf <- do.call(rbind, lapply(res, function(x) x$iters$performance))
+  tbl_iters_varsel <- do.call(rbind, lapply(res, function(x) x$iters$varsel))
+  tbl_iters_groupsel <- do.call(rbind, lapply(res, function(x) x$iters$groupsel))
   
+  tbl_estcoef <- do.call(rbind, lapply(res, function(x) x$coef$estcoef))
+
   # Results per iteration
-  tbl_res_iters <- list("tbl_perf"=tbl_perf, "tbl_truecoef"=tbl_truecoef, "tbl_estcoef"=tbl_estcoef, 
-              "tbl_varsel"=tbl_varsel, "tbl_groupsel"=tbl_groupsel)
-  saveRDS(sim.all, here::here(sim.path, "tbl_scenario_results.rds"))
-  
-  # Results averaged across iterations
-  tbl_perf %>%
-    group_by(methods, penalty)
+  tbl_res <- list("performance"=list("tbl_perf"=tbl_perf, "tbl_varsel"=tbl_varsel, "tbl_groupsel"=tbl_groupsel), 
+                  "iters" = list("tbl_iters_perf"=tbl_iters_perf, "tbl_iters_varsel"=tbl_iters_varsel, "tbl_iters_groupsel"=tbl_iters_groupsel),
+                  "coef" = tbl_estcoef)
+  saveRDS(tbl_res, here::here(sim.path, "tbl_scenario_results.rds"))
+
   return(NULL)
 }

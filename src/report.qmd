@@ -20,7 +20,6 @@ format:
     self-contained: true
 ---
 
-
 ```{r setup, include=FALSE}
 rm(list=ls())
 knitr::opts_chunk$set(echo = F, warning=F, message=F)
@@ -42,6 +41,3 @@ ggcols <- c("black", "deepskyblue3", "royalblue3", "mediumorchid3", "grey45")
 # Read in results
 tbl_res <- readRDS(here::here(sim.path, "tbl_scenario_results.rds"))
 ```
-
-
-

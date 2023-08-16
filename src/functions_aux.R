@@ -69,14 +69,14 @@ c_index <- function(pred, obs){
 eval_performance <- function(pred, obs){
   r2 <- ifelse(sd(pred)<0.001, NA, cor(pred,obs, use="pairwise.complete.obs")^2)
   CS <- lm(obs ~ pred)$coefficients[2]
-  Cind <- c_index(pred=pred, obs=obs)
+ # Cind <- c_index(pred=pred, obs=obs)
   rmse.val <- sqrt(mean((pred-obs)^2))
   mae.val <- mean(abs(pred-obs))
 
   res <- data.frame(R2 = r2,
                     RMSE = rmse.val,
                     MAE = mae.val,
-                    C = Cind,
+                  #  C = Cind,
                     CalbSlope=CS) 
   return(res)
 }

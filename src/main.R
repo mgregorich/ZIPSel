@@ -10,7 +10,6 @@ rm(list=ls())
 pacman::p_load(ggplot2, parallel, future.apply, stringr, kableExtra,
                openxlsx, dplyr, tidyverse, tableone, concreg, Matrix,
                glmnet, MASS, ranger, simdata)
-options(dplyr.summarise.inform = FALSE)
 
 # Paths
 sim.date <- Sys.Date()
@@ -35,7 +34,7 @@ scenarios$iter <- 2
 # ======================= Simulation ===========================================
 
 # --- Run through all scenarios
-plan(multisession, workers = detectCores()*.5)
+plan(multisession, workers = detectCores()*.75)
 invisible(future_lapply(1:nrow(scenarios), function(k) {
   tryCatch({simulate_scenario(scn=scenarios[k,], dsgn=sim_design[[scenarios[k,]$dsgn]])
   }, error = function(e) {
