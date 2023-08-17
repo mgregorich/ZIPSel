@@ -27,7 +27,7 @@ pacman::p_load(ggplot2, parallel, future.apply, stringr,
                dplyr, tidyverse, tableone, concreg, gt,
                glmnet, patchwork, ranger, tuneRanger, RColorBrewer, ggvenn)
 
-source(here::here("src","functions.R"))
+source(here::here("src","functions_aux.R"))
 
 ```
 
@@ -37,6 +37,9 @@ source(here::here("src","functions.R"))
 
 ```{r initialization}
 # --- Initialization
+ncv = 10
+nR  = 2
+#probnz = 0.9
 data_mos <- readRDS(here::here("data", "mosaique", "Large_Mariella.rds"))
 data_peptides <- data_mos[,7:ncol(data_mos)]
 colnames(data_peptides) <- paste0("P",1:ncol(data_peptides))
@@ -52,11 +55,9 @@ data_mos <- data.frame(cbind(data_mos[,1:6],data_peptides)) %>%
 
 # Parameter
 n = nrow(data_mos)
-ncv = 10
-nR  = 2
 p = ncol(data_peptides)
 folds <- sample(rep(1:ncv, ceiling(n/ncv)))[1:n]
-pflist <- list(c(1,2), c(2,1), c(1,3))
+pflist <- list(c(1,2), c(2,1), c(1,3), c(3,1))
 
 
 # Data preparation
@@ -86,9 +87,7 @@ data.obj <- list("y" = data_mos$log2eGFR, "clinical" = c, x = ximp, u = u, d = d
                  pred.rgarrote.cb = NA, pred.rgarrote.cp = NA,
                  pred.rf.notune = NA, pred.rf.tune = NA)
 
-# List of variable selection for models 
-list.varsel <- list()
-list.varsel$all <- colnames(data_peptides)
+
 ```
 
 ```{r}
@@ -107,7 +106,7 @@ table_vars %>%
 
 ```{r}
 p1 <- data_mos %>% 
-  select(-c(idAuswertung, Age, Sex, eGFR)) %>% 
+  dplyr::select(-c(idAuswertung, Age, Sex, eGFR)) %>% 
   summarise_all(~sum(.x == 0) / n()) %>% 
   reshape2::melt() %>%
   arrange(value) %>%
@@ -158,13 +157,19 @@ p4 <- data.frame("intensity" = to_factor(d[, 10])) %>% ggplot(aes(x = intensity)
 
 # Methods
 
-## Ridge
+## Models
 
-### Combined
+### Algorithmic models
 
 ```{r}
 # CV Predictions
+model <- rep(c("lasso", "ridge", "lasso-ridge", "ridge-lasso", "ridge-garrote", "random forest"), each=2)[-2]
+penalty <- c(rep(c("combined", "component"), 5)[-2], "without tuning", "tuning")
+nmod <- length(model)
+tbl_performance <- cbind.data.frame(model, penalty, matrix(NA, nrow=ncv*nmod, ncol=4))
+colnames(tbl_performance) <- c("model", "penalty", "R2", "RMSPE", "MAE", "CS")
 for(i in 1:ncv){
+  print(paste0("NCV iteration = ", i,"/", ncv))
   obj.train <- list("y" = data.obj$y[(1:n)[folds != i]],
                     "clinical" = data.obj$clinical[(1:n)[folds != i], ], 
                     "x" = data.obj$x[(1:n)[folds != i], ], 
@@ -176,33 +181,158 @@ for(i in 1:ncv){
                    "u" = data.obj$u[(1:n)[folds == i], ], 
                    "d" = data.obj$d[(1:n)[folds == i], ])
   
-  # Ridge
-  fit.ridge.cv <- perform_penreg(obj.train, family="gaussian", cv=ncv, R=nR, penalty = "combined")
+  # Models
+  fit.lasso.cb <- perform_penreg(obj.train, family = "gaussian", alpha1 = 1, cv = ncv, R = nR, penalty = "combined")
+  fit.ridge.cb <- perform_penreg(obj.train, family="gaussian", alpha1 = 0, cv=ncv, R=nR, penalty = "combined")
+  fit.ridge.cp <- perform_penreg(obj.train, family = "gaussian", alpha1 = 0, cv = ncv, R = nR, penalty  =  "component", pflist = pflist)
+  fit.lridge.cb <- perform_lridge(obj.train, family = "gaussian", cv = ncv, R = nR, penalty = "combined")
+  fit.lridge.cp <- perform_lridge(obj.train, family = "gaussian", cv = ncv, R = nR, penalty = "component", pflist = pflist)
+  fit.rlasso.cb <- perform_rlasso(obj.train, family = "gaussian", cv = ncv, R = nR, penalty = "combined")
+  fit.rlasso.cp <- perform_rlasso(obj.train, family = "gaussian", cv = ncv, R = nR, penalty = "component", pflist = pflist)
+  fit.rgarrote.cb <- perform_rgarrote(obj.train, family = "gaussian", cv = ncv, R = nR, penalty = "combined")
+  fit.rgarrote.cp <- perform_rgarrote(obj.train, family = "gaussian", cv = ncv, R = nR, penalty = "component", pflist = pflist)
   
   # Predictions
-  data.obj$pred.ridge.cb[(1:n)[folds == i]] <- predict_penreg(obj = fit.ridge.cv,
-                                                            newdata = obj.test,
-                                                            model = "ridge")
+  data.obj$pred.lasso.cb[(1:n)[folds == i]] <- predict_penreg(obj = fit.lasso.cb, newdata = obj.test, model = "lasso")
+  data.obj$pred.ridge.cb[(1:n)[folds == i]] <- predict_penreg(obj = fit.ridge.cb,newdata = obj.test,model = "ridge")
+  data.obj$pred.ridge.cp[(1:n)[folds == i]] <- predict_penreg(obj = fit.ridge.cp, newdata = obj.test, model = "ridge")
+  data.obj$pred.lridge.cb[(1:n)[folds == i]] <- predict_lridge(obj = fit.lridge.cb, newdata = obj.test)
+  data.obj$pred.lridge.cp[(1:n)[folds == i]] <- predict_lridge(obj = fit.lridge.cp, newdata = obj.test)
+  data.obj$pred.rlasso.cb[(1:n)[folds == i]] <- predict_rlasso(obj = fit.rlasso.cb, newdata = obj.test)
+  data.obj$pred.rlasso.cp[(1:n)[folds == i]] <- predict_rlasso(obj = fit.rlasso.cp, newdata = obj.test)
+  data.obj$pred.rgarrote.cb[(1:n)[folds == i]] <- predict_rgarrote(obj = fit.rgarrote.cb, newdata = obj.test)
+  data.obj$pred.rgarrote.cp[(1:n)[folds == i]] <- predict_rgarrote(obj = fit.rgarrote.cp, newdata = obj.test)
+  
+  # Performance
+  tbl_performance[nmod*i-nmod+1, 3:6] <- eval_performance(data.obj$pred.lasso.cb[(1:n)[folds == i]], obj.test$y)
+  tbl_performance[nmod*i-nmod+2, 3:6] <- eval_performance(data.obj$pred.ridge.cb[(1:n)[folds == i]], obj.test$y)
+  tbl_performance[nmod*i-nmod+3, 3:6] <- eval_performance(data.obj$pred.ridge.cp[(1:n)[folds == i]], obj.test$y)
+  tbl_performance[nmod*i-nmod+4, 3:6] <- eval_performance(data.obj$pred.ridge.cb[(1:n)[folds == i]], obj.test$y)
+  tbl_performance[nmod*i-nmod+5, 3:6] <- eval_performance(data.obj$pred.lridge.cp[(1:n)[folds == i]], obj.test$y)
+  tbl_performance[nmod*i-nmod+6, 3:6] <- eval_performance(data.obj$pred.rlasso.cb[(1:n)[folds == i]], obj.test$y)
+  tbl_performance[nmod*i-nmod+7, 3:6] <- eval_performance(data.obj$pred.rlasso.cp[(1:n)[folds == i]], obj.test$y)
+  tbl_performance[nmod*i-nmod+8, 3:6] <- eval_performance(data.obj$pred.rgarrote.cb[(1:n)[folds == i]], obj.test$y)
+  tbl_performance[nmod*i-nmod+9, 3:6] <- eval_performance(data.obj$pred.rgarrote.cp[(1:n)[folds == i]], obj.test$y)
 }
-# Final model
-fit.ridge.cb <- perform_penreg(data.obj = data.obj, family = "gaussian", cv = ncv, R = nR,
-                            penalty = "combined")
-coef.ridge.cb <- fit.ridge.cb$fit$coefficients
 
-# Performance
-tbl.ridge.cb <- eval_performance(data.obj$pred.ridge.cb, data_mos$log2eGFR)
+
+# Final model
+list_model <- list()
+list_model$fit.lasso <- perform_penreg(data.obj = data.obj, family = "gaussian", cv = ncv, R = nR, alpha1 = 1, penalty = "combined")
+list_model$fit.ridge.cb <- perform_penreg(data.obj = data.obj, family = "gaussian", cv = ncv, R = nR, penalty = "combined")
+list_model$fit.ridge.cp <- perform_penreg(data.obj = data.obj, family = "gaussian", cv = ncv, R = nR, penalty = "component", pflist = pflist)
+list_model$fit.lridge.cb <- perform_lridge(data.obj = data.obj, family = "gaussian", cv = ncv, R = nR, penalty = "combined")
+list_model$fit.lridge.cp <- perform_lridge(data.obj = data.obj, family = "gaussian", cv = ncv, R = nR, penalty = "component", pflist = pflist)
+list_model$fit.rlasso.cb <- perform_rlasso(data.obj = data.obj, family = "gaussian", cv = ncv, R = nR, penalty = "combined")
+list_model$fit.rlasso.cp <- perform_rlasso(data.obj = data.obj, family = "gaussian", cv = ncv, R = nR, penalty = "component", pflist = pflist)
+list_model$fit.rgarrote.cb <- perform_rlasso(data.obj = data.obj, family = "gaussian", cv = ncv, R = nR, penalty = "combined")
+list_model$fit.rgarrote.cp <- perform_rlasso(data.obj = data.obj, family = "gaussian", cv = ncv, R = nR, penalty = "component", pflist = pflist)
+
+# Coefficients
+list_coef <- list()
+list_coef$lasso.cb <- list_model$fit.lasso$fit$coefficients
+list_coef$ridge.cb <- list_model$fit.ridge.cb$fit$coefficients
+list_coef$ridge.cp <- list_model$fit.ridge.cp$fit$coefficients
+list_coef$lridge.cb <- list_model$fit.lridge.cb$fit$coefficients
+list_coef$lridge.cp <- list_model$fit.lridge.cp$fit$coefficients
+list_coef$rlasso.cb <- list_model$fit.rlasso.cb$fit$coefficients
+list_coef$rlasso.cp <- list_model$fit.rlasso.cp$fit$coefficients
+list_coef$rgarrote.cb <- list_model$fit.rgarrote.cb$fit$coefficients
+list_coef$rgarrote.cp <- list_model$fit.rgarrote.cp$fit$coefficients
 
 # Variable selection
-ridge.varsel <- rownames(coef.ridge.cb)[which(coef.ridge.cb != 0)][-1]
-ridge.varsel <- str_remove_all(ridge.varsel, "u.|d.")
-list.varsel$ridge.cb <- ridge.varsel[!duplicated(ridge.varsel)]
+extract_varsel <- function(modelcoef){
+  model.varsel <- rownames(modelcoef)[which(modelcoef != 0)][-1]
+  model.varsel <- str_remove_all(model.varsel, "u.|d.|x.")
+  return(model.varsel[!duplicated(model.varsel)])
+}
+
+# List of variable selection for models 
+list_varsel <- list()
+list_varsel$all <- colnames(data_peptides)
+list_varsel$lasso.cb <- extract_varsel(list_coef$lasso.cb)
+list_varsel$ridge.cb <- extract_varsel(list_coef$ridge.cb)
+list_varsel$ridge.cp <- extract_varsel(list_coef$ridge.cp)
+list_varsel$lridge.cb <- extract_varsel(list_coef$lridge.cb)
+list_varsel$lridge.cp <- extract_varsel(list_coef$lridge.cp)
+list_varsel$rlasso.cb <- extract_varsel(list_coef$rlasso.cb)
+list_varsel$rlasso.cp <- extract_varsel(list_coef$rlasso.cp)
+list_varsel$rgarrote.cb <- extract_varsel(list_coef$rgarrote.cb)
+list_varsel$rgarrote.cp <- extract_varsel(list_coef$rgarrote.cp)
+```
+
+### Random forest
+
+```{r}
+#| output: false
+
+dataset <- data.frame(y = log2(data_mos$eGFR), age = data_mos$Age, sex = data_mos$Sex, x, pred.rf.notune = NA, pred.rf.tune = NA)
+
+for(i in 1:ncv){
+  train <- dataset[(1:n)[folds != i], ]
+  test <- dataset[(1:n)[folds == i], ]
+  
+  fit.rf.notune <- ranger(y~., data = train %>% dplyr::select(-c(pred.rf.notune, pred.rf.tune)), num.trees = 1000)
+  fit.rf.tune <- tuneMtryFast(y~., data = train %>% dplyr::select(-c(pred.rf.notune, pred.rf.tune)), num.trees = 1000, stepFactor = 0.5, doBest = TRUE, plot = FALSE)
+  
+  # Predictions
+   dataset$pred.rf.notune[(1:n)[folds == i]] <- predict(fit.rf.notune,  data = test %>% dplyr::select(-c(y, pred.rf.notune, pred.rf.tune)))$predictions
+   dataset$pred.rf.tune[(1:n)[folds == i]] <- predict(fit.rf.tune,  data = test %>% dplyr::select(-c(y, pred.rf.tune, pred.rf.notune)))$predictions
+   
+  # Performance 
+  tbl_performance[nmod*i-nmod+10, 3:6] <- eval_performance(pred = dataset$pred.rf.notune, obs = dataset$y)
+  tbl_performance[nmod*i-nmod+11, 3:6] <- eval_performance(pred = dataset$pred.rf.tune, obs = dataset$y)
+}
+```
+
+```{r}
+# Final performance of all models
+tbl_perf <- tbl_performance %>%
+  group_by(model, penalty) %>%
+  summarise("R2"=mean(R2, na.rm=TRUE), "RMSPE"=mean(RMSPE, na.rm=TRUE), 
+            "MAE"=mean(MAE, na.rm=TRUE), "CS"=mean(CS, na.rm=TRUE))
+```
+
+## Coefficients
+
+```{r}
+#| label: fig-lassocoef 
+#| fig-cap: "Coefficients of the lasso regression model ordered by the magnitude." 
+tbl.coef.lasso <- data.frame("peptide" = str_remove_all(names(list_coef$lasso.cb)[2:(p+1)], "x."), "coef" = list_coef$lasso.cb[2:(p+1)]) 
+
+p1 <- tbl.coef.lasso %>%
+  arrange(coef) %>%
+  mutate(coefid = 1:p) %>%
+  ggplot(aes(x = coef, y = coefid)) +
+  geom_point(shape = 1, col = "royalblue3") +
+  scale_x_continuous("Coefficient") +
+  scale_y_continuous("Variable index") +
+  geom_line(orientation = "y",col = "royalblue3") +
+  geom_vline(xintercept = 0, linetype = 2) +
+  ggtitle("Ordered by X") +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5))
+p2 <- tbl.coef.lasso %>%
+  arrange(peptide) %>%
+  mutate(coefid = 1:p) %>%
+  ggplot(aes(x = coef, y = coefid)) +
+  geom_point(shape = 1, col = "royalblue3") +
+  scale_x_continuous("Coefficient") +
+  scale_y_continuous("Variable index") +
+  geom_line(orientation = "y",col = "royalblue3") +
+  geom_vline(xintercept = 0, linetype = 2) +
+  ggtitle("Unordered") +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5))
+p1 + p2
 ```
 
 ```{r}
 #| label: fig-ridgecoefcb 
 #| fig-cap: "Component-specific coefficients of the ridge regression model ordered by D and U, respectively." 
 
-tbl.coef.ridge.cb <- data.frame("peptide"=str_remove_all(names(coef.ridge.cb)[2:(p+1)], "u.|d."), "U"=coef.ridge.cb[2:(p+1)], "D"=coef.ridge.cb[(p+2):(2*p+1)]) 
+tbl.coef.ridge.cb <- data.frame("peptide"=str_remove_all(names(list_coef$ridge.cb)[2:(p+1)], "u.|d."), 
+                                "U"=list_coef$ridge.cb[2:(p+1)], "D"=list_coef$ridge.cb[(p+2):(2*p+1)]) 
 
 p1 <- tbl.coef.ridge.cb %>%
   arrange(D) %>%
@@ -249,52 +379,11 @@ p3 <- tbl.coef.ridge.cb %>%
 p1 + p2 + p3
 ```
 
-### Component
-
-```{r}
-# CV Predictions
-for(i in 1:ncv){
-  obj.train <- list("y" = data.obj$y[(1:n)[folds != i]],
-                    "clinical" = data.obj$clinical[(1:n)[folds != i], ], 
-                    "x" = data.obj$x[(1:n)[folds != i], ], 
-                    "u" = data.obj$u[(1:n)[folds != i], ],
-                    "d" = data.obj$d[(1:n)[folds != i], ])
-  obj.test <- list("y" = data.obj$y[(1:n)[folds == i]],
-                   "clinical" = data.obj$clinical[(1:n)[folds == i], ], 
-                   "x" = data.obj$x[(1:n)[folds == i], ],
-                   "u" = data.obj$u[(1:n)[folds == i], ], 
-                   "d" = data.obj$d[(1:n)[folds == i], ])
-  
-  # Ridge
-  fit.ridge.cv <- perform_penreg(obj.train, family = "gaussian", cv = ncv, R = nR, 
-                                 penalty  =  "component", pflist = pflist)
-  
-  # Predictions
-  data.obj$pred.ridge.cp[(1:n)[folds == i]] <- predict_penreg(obj=fit.ridge.cv, 
-                                                              newdata=obj.test, 
-                                                              model="ridge")
-}
-
-# Performance
-tbl.ridge.cp <- eval_performance(data.obj$pred.ridge.cp, data_mos$log2eGFR)
-
-# Final model
-fit.ridge.cp <- perform_penreg(data.obj = data.obj, family = "gaussian", cv = ncv, R = nR, 
-                                 penalty = "component",
-                                 pflist = pflist)
-coef.ridge.cp <- fit.ridge.cp$fit$coefficients
-
-# Variable selection
-ridge.varsel <- rownames(coef.ridge.cp)[which(coef.ridge.cp != 0)][-1]
-ridge.varsel <- str_remove_all(ridge.varsel, "u.|d.")
-list.varsel$ridge.cp <- ridge.varsel[!duplicated(ridge.varsel)]
-```
-
 ```{r}
 #| label: fig-ridgecoefcp
 #| fig-cap: "Component-specific coefficients of the ridge regression model ordered by D and U, respectively." 
-tbl.coef.ridge.cp <- data.frame("peptide" = str_remove_all(names(coef.ridge.cp)[2:(p+1)], "u.|d."), 
-                                "U" = coef.ridge.cp[2:(p+1)], "D" = coef.ridge.cp[(p+2):(2*p+1)]) 
+tbl.coef.ridge.cp <- data.frame("peptide" = str_remove_all(names(list_coef$ridge.cp)[2:(p+1)], "u.|d."), 
+                                "U" = list_coef$ridge.cp[2:(p+1)], "D" = list_coef$ridge.cp[(p+2):(2*p+1)]) 
 
 p1 <- tbl.coef.ridge.cp %>%
   arrange(D) %>%
@@ -341,125 +430,12 @@ p3 <- tbl.coef.ridge.cp %>%
 p1 + p2 + p3
 ```
 
-## Lasso
-
-```{r}
-# CV Predictions
-for(i in 1:ncv){
-  obj.train <- list("y" = data.obj$y[(1:n)[folds != i]],
-                    "clinical" = data.obj$clinical[(1:n)[folds != i], ], 
-                    "x" = data.obj$x[(1:n)[folds != i], ], 
-                    "u" = data.obj$u[(1:n)[folds != i], ], 
-                    "d" = data.obj$d[(1:n)[folds != i], ])
-  obj.test <- list("y" = data.obj$y[(1:n)[folds == i]],
-                   "clinical" = data.obj$clinical[(1:n)[folds == i], ], 
-                   "x" = data.obj$x[(1:n)[folds == i], ], 
-                   "u" = data.obj$u[(1:n)[folds == i], ], 
-                   "d" = data.obj$d[(1:n)[folds == i], ])
-  
-  # Lasso
-  fit.lasso.cv <- perform_penreg(obj.train, family = "gaussian", alpha1 = 1, cv = ncv, R = nR,
-                                 penalty = "combined")
-  
-  # Predictions
-  data.obj$pred.lasso[(1:n)[folds == i]] <- predict_penreg(obj = fit.lasso.cv, 
-                                                          newdata = obj.test,
-                                                          model = "lasso")
-}
-
-# Performance
-tbl.lasso <- eval_performance(data.obj$pred.lasso, data_mos$log2eGFR)
-
-# Final model
-fit.lasso <- perform_penreg(data.obj = data.obj, family = "gaussian", cv = ncv, R = nR, alpha1 = 1,
-                            penalty = "combined")
-coef.lasso <- fit.lasso$fit$coefficients
-
-# Variable selection
-lasso.varsel <- rownames(coef.lasso)[which(coef.lasso != 0)][-1]
-lasso.varsel <- str_remove_all(lasso.varsel, "u.|d.")
-list.varsel$lasso <- lasso.varsel[!duplicated(lasso.varsel)]
-```
-
-```{r}
-#| label: fig-lassocoef 
-#| fig-cap: "Coefficients of the lasso regression model ordered by the magnitude." 
-tbl.coef.lasso <- data.frame("peptide" = str_remove_all(names(coef.lasso)[2:(p+1)], "x."), "coef" = coef.lasso[2:(p+1)]) 
-
-p1 <- tbl.coef.lasso %>%
-  arrange(coef) %>%
-  mutate(coefid = 1:p) %>%
-  ggplot(aes(x = coef, y = coefid)) +
-  geom_point(shape = 1, col = "royalblue3") +
-  scale_x_continuous("Coefficient") +
-  scale_y_continuous("Variable index") +
-  geom_line(orientation = "y",col = "royalblue3") +
-  geom_vline(xintercept = 0, linetype = 2) +
-  ggtitle("Ordered by X") +
-  theme_bw() +
-  theme(plot.title = element_text(hjust = 0.5))
-p2 <- tbl.coef.lasso %>%
-  arrange(peptide) %>%
-  mutate(coefid = 1:p) %>%
-  ggplot(aes(x = coef, y = coefid)) +
-  geom_point(shape = 1, col = "royalblue3") +
-  scale_x_continuous("Coefficient") +
-  scale_y_continuous("Variable index") +
-  geom_line(orientation = "y",col = "royalblue3") +
-  geom_vline(xintercept = 0, linetype = 2) +
-  ggtitle("Unordered") +
-  theme_bw() +
-  theme(plot.title = element_text(hjust = 0.5))
-p1 + p2
-```
-
-## Lasso-Ridge
-
-### Combined
-
-```{r}
-# CV Predictions
-for(i in 1:ncv){
-  obj.train <- list("y" = data.obj$y[(1:n)[folds != i]],
-                    "clinical" = data.obj$clinical[(1:n)[folds != i], ], 
-                    "x" = data.obj$x[(1:n)[folds != i], ], 
-                    "u" = data.obj$u[(1:n)[folds != i], ], 
-                    "d" = data.obj$d[(1:n)[folds != i], ])
-  obj.test <- list("y" = data.obj$y[(1:n)[folds == i]],
-                   "clinical" = data.obj$clinical[(1:n)[folds == i], ], 
-                   "x" = data.obj$x[(1:n)[folds == i], ], 
-                   "u" = data.obj$u[(1:n)[folds == i], ], 
-                   "d" = data.obj$d[(1:n)[folds == i], ])
-  
-  # Ridge-Garrote
-  fit.lridge.cv <- perform_lridge(obj.train, family = "gaussian", cv = ncv, R = nR, nlambda = c(10, 10),
-                                  penalty = "combined")
-  
-  # Predictions
-  data.obj$pred.lridge.cb[(1:n)[folds == i]] <- predict_lridge(obj = fit.lridge.cv,
-                                                              newdata = obj.test)
-}
-
-# Performance 
-tbl.lridge.cb <- eval_performance(pred = data.obj$pred.lridge.cb, obs = data_mos$log2eGFR)
-
-# Final model
-fit.lridge.cb <- perform_lridge(data.obj = data.obj, family = "gaussian", cv = ncv, R = nR, nlambda = c(10,10),
-                             penalty = "combined")
-coef.lridge.cb <- fit.lridge.cb$fit$coefficients
-  
-# Variable selection
-lridge.varsel <- names(coef.lridge.cb[coef.lridge.cb != 0])[-1]
-lridge.varsel <- str_remove_all(lridge.varsel, "u.|d.")
-list.varsel$lridge.cb <- lridge.varsel
-```
-
 ```{r}
 #| label: fig-lridgecoefcb 
 #| fig-cap: "Component-specific coefficients of the lasso-ridge regression model ordered by the magnitude of the coefficients corresponding to D and U, respectively." 
 
-tbl.coef.lridge.cb <- data.frame("peptide" = str_remove_all(names(coef.lridge.cb)[2:(p+1)], "u.|d."), 
-                                 "U" = coef.lridge.cb[2:(p+1)], "D" = coef.lridge.cb[(p+2):(2*p+1)]) 
+tbl.coef.lridge.cb <- data.frame("peptide" = str_remove_all(names(list_coef$lridge.cb)[2:(p+1)], "u.|d."), 
+                                 "U" = list_coef$lridge.cb[2:(p+1)], "D" = list_coef$lridge.cb[(p+2):(2*p+1)]) 
 
 p1 <- tbl.coef.lridge.cb %>%
   arrange(D) %>%
@@ -506,50 +482,12 @@ p3 <- tbl.coef.lridge.cb %>%
 p1 + p2 + p3
 ```
 
-### Component
-
-```{r}
-# CV Predictions
-for(i in 1:ncv){
-  obj.train <- list("y" = data.obj$y[(1:n)[folds != i]],
-                    "clinical" = data.obj$clinical[(1:n)[folds != i], ], 
-                    "x" = data.obj$x[(1:n)[folds != i], ], 
-                    "u" = data.obj$u[(1:n)[folds != i], ], 
-                    "d" = data.obj$d[(1:n)[folds != i],])
-  obj.test <- list("y" = data.obj$y[(1:n)[folds == i]],
-                   "clinical" = data.obj$clinical[(1:n)[folds == i],], 
-                   "x" = data.obj$x[(1:n)[folds == i], ], 
-                   "u" = data.obj$u[(1:n)[folds == i], ], 
-                   "d" = data.obj$d[(1:n)[folds == i],])
-  
-  # Ridge-Garrote
-  fit.lridge.cv <- perform_lridge(obj.train, family = "gaussian", cv = ncv, R = nR, nlambda = c(10,10),
-                                  penalty = "component", pflist = pflist)
-  
-  # Predictions
-  data.obj$pred.lridge.cp[(1:n)[folds == i]] <- predict_lridge(obj = fit.lridge.cv, newdata = obj.test)
-}
-
-# Performance 
-tbl.lridge.cp <- eval_performance(pred = data.obj$pred.lridge.cp, obs = data_mos$log2eGFR)
-
-# Final model
-fit.lridge.cp <- perform_lridge(data.obj = data.obj, family="gaussian", cv = ncv, R = nR, nlambda = c(10,10),
-                             penalty = "component", pflist = pflist)
-coef.lridge.cp <- fit.lridge.cp$fit$coefficients
-  
-# Variable selection
-lridge.varsel <- names(coef.lridge.cp[coef.lridge.cp != 0])[-1]
-lridge.varsel <- str_remove_all(lridge.varsel, "u.|d.")
-list.varsel$lridge.cp <- lridge.varsel
-```
-
 ```{r}
 #| label: fig-lridgecoefcp 
 #| fig-cap: "Component-specific coefficients of the lasso-ridge regression model ordered by the magnitude of the coefficients corresponding to D and U, respectively." 
 
-tbl.coef.lridge.cp <- data.frame("peptide" = str_remove_all(names(coef.lridge.cp)[2:(p+1)], "u.|d."), 
-                                 "U" = coef.lridge.cp[2:(p+1)], "D" = coef.lridge.cp[(p+2):(2*p+1)]) 
+tbl.coef.lridge.cp <- data.frame("peptide" = str_remove_all(names(list_coef$lridge.cb)[2:(p+1)], "u.|d."), 
+                                 "U" = list_coef$lridge.cp[2:(p+1)], "D" = list_coef$lridge.cp[(p+2):(2*p+1)]) 
 
 p1 <- tbl.coef.lridge.cp %>%
   arrange(D) %>%
@@ -596,51 +534,11 @@ p3 <- tbl.coef.lridge.cp %>%
 p1 + p2 + p3
 ```
 
-## Ridge-Lasso (adaptive lasso)
-
-### Combined
-
-```{r}
-# CV Predictions
-for(i in 1:ncv){
-  obj.train <- list("y" = data.obj$y[(1:n)[folds !=i ]], 
-                    "clinical" = data.obj$clinical[(1:n)[folds != i], ], 
-                    "x" = data.obj$x[(1:n)[folds != i], ], 
-                    "u" = data.obj$u[(1:n)[folds != i], ], 
-                    "d" = data.obj$d[(1:n)[folds != i], ])
-  obj.test <- list("y" = data.obj$y[(1:n)[folds == i]], 
-                   "clinical" = data.obj$clinical[(1:n)[folds == i], ], 
-                   "x" = data.obj$x[(1:n)[folds == i], ], 
-                   "u" = data.obj$u[(1:n)[folds == i], ], 
-                   "d" = data.obj$d[(1:n)[folds == i],])
-  
-  # Ridge-Garrote
-  fit.rlasso.cv <- perform_rlasso(obj.train, family = "gaussian", cv = ncv, R = nR, nlambda = c(10, 10),
-                                  penalty = "combined")
-  
-  # Predictions
-  data.obj$pred.rlasso.cb[(1:n)[folds == i]] <- predict_rlasso(obj = fit.rlasso.cv, newdata = obj.test)
-}
-
-# Performance 
-tbl.rlasso.cb <- eval_performance(pred = data.obj$pred.rlasso.cb, obs = data.obj$y)
-
-# Final model
-fit.rlasso.cb <- perform_rlasso(data.obj = data.obj, family = "gaussian", cv = ncv, R = nR, nlambda = c(10, 10),
-                             penalty = "combined")
-coef.rlasso.cb <- fit.rlasso.cb$fit$coefficients
-  
-# Variable selection
-rlasso.varsel <- names(fit.rlasso.cb$fit$coefficients[fit.rlasso.cb$fit$coefficients != 0])[-1]
-rlasso.varsel <- str_remove_all(rlasso.varsel, "u.|d.")
-list.varsel$rlasso.cb <- rlasso.varsel
-```
-
 ```{r}
 #| label: fig-rlassocoefcb 
 #| fig-cap: "Coefficients of the ridge-lasso regression model ordered by the magnitude." 
-tbl.coef.rlasso.cb <- data.frame("peptide" = str_remove_all(names(coef.rlasso.cb)[2:(p+1)], "x."), 
-                                 "coef" = coef.rlasso.cb[2:(p+1)]) 
+tbl.coef.rlasso.cb <- data.frame("peptide" = str_remove_all(names(list_coef$rlasso.cb)[2:(p+1)], "x."), 
+                                 "coef" = list_coef$rlasso.cb[2:(p+1)]) 
 
 p1 <- tbl.coef.rlasso.cb %>%
   arrange(coef) %>%
@@ -669,49 +567,11 @@ p2 <- tbl.coef.rlasso.cb %>%
 p1 + p2
 ```
 
-### Component
-
-```{r}
-# CV Predictions
-for(i in 1:ncv){
-  obj.train <- list("y" = data.obj$y[(1:n)[folds != i]], 
-                    "clinical" = data.obj$clinical[(1:n)[folds != i], ], 
-                    "x" = data.obj$x[(1:n)[folds != i], ], 
-                    "u" = data.obj$u[(1:n)[folds != i], ], 
-                    "d" = data.obj$d[(1:n)[folds != i], ])
-  obj.test <- list("y" = data.obj$y[(1:n)[folds == i]], 
-                   "clinical" = data.obj$clinical[(1:n)[folds == i], ], 
-                   "x" = data.obj$x[(1:n)[folds == i], ], 
-                   "u" = data.obj$u[(1:n)[folds == i], ], 
-                   "d" = data.obj$d[(1:n)[folds == i],])
-  
-  # Ridge-Garrote
-  fit.rlasso.cv <- perform_rlasso(obj.train, family = "gaussian", cv = ncv, R = nR, nlambda = c(10, 10),
-                                  penalty = "component", pflist = pflist)
-  
-  # Predictions
-  data.obj$pred.rlasso.cp[(1:n)[folds == i]] <- predict_rlasso(obj = fit.rlasso.cv, newdata = obj.test)
-}
-
-# Performance 
-tbl.rlasso.cp <- eval_performance(pred = data.obj$pred.rlasso.cp, obs = data.obj$y)
-
-# Final model
-fit.rlasso.cp <- perform_rlasso(data.obj = data.obj, family = "gaussian", cv = ncv, R = nR, nlambda = c(10, 10),
-                             penalty = "component", pflist = pflist)
-coef.rlasso.cp <- fit.rlasso.cp$fit$coefficients
-  
-# Variable selection
-rlasso.varsel <- names(fit.rlasso.cp$fit$coefficients[fit.rlasso.cp$fit$coefficients != 0])[-1]
-rlasso.varsel <- str_remove_all(rlasso.varsel, "u.|d.")
-list.varsel$rlasso.cp <- rlasso.varsel
-```
-
 ```{r}
 #| label: fig-rlassocoefcp 
 #| fig-cap: "Coefficients of the ridge-lasso regression model ordered by the magnitude." 
-tbl.coef.rlasso.cp <- data.frame("peptide" = str_remove_all(names(coef.rlasso.cp)[2:(p+1)], "x."), 
-                                 "coef" = coef.rlasso.cp[2:(p+1)]) 
+tbl.coef.rlasso.cp <- data.frame("peptide" = str_remove_all(names(list_coef$rlasso.cp)[2:(p+1)], "x."), 
+                                 "coef" = list_coef$rlasso.cp[2:(p+1)]) 
 
 p1 <- tbl.coef.rlasso.cp %>%
   arrange(coef) %>%
@@ -740,51 +600,11 @@ p2 <- tbl.coef.rlasso.cp %>%
 p1 + p2
 ```
 
-## Ridge-Garrote
-
-### Combined
-
-```{r model-rgarrote}
-# CV Predictions
-for(i in 1:ncv){
-  obj.train <- list("y" = data.obj$y[(1:n)[folds != i]], 
-                    "clinical" = data.obj$clinical[(1:n)[folds != i], ], 
-                    "x" = data.obj$x[(1:n)[folds != i], ], 
-                    "u" = data.obj$u[(1:n)[folds != i], ], 
-                    "d" = data.obj$d[(1:n)[folds != i], ])
-  obj.test <- list("y" = data.obj$y[(1:n)[folds == i]], 
-                   "clinical" = data.obj$clinical[(1:n)[folds == i], ], 
-                   "x" = data.obj$x[(1:n)[folds == i], ], 
-                   "u" = data.obj$u[(1:n)[folds == i], ], 
-                   "d" = data.obj$d[(1:n)[folds == i], ])
-  
-  # Ridge-Garrote
-  fit.rgarrote.cv <- perform_rgarrote(obj.train, family = "gaussian", cv = ncv, R = nR, nlambda = c(10,10),
-                                      penalty="combined")
-  
-  # Predictions
-  data.obj$pred.rgarrote.cb[(1:n)[folds == i]] <- predict_rgarrote(obj = fit.rgarrote.cv, newdata = obj.test)
-}
-
-# Performance 
-tbl.rgarrote.cb <- eval_performance(pred = data.obj$pred.rgarrote.cb, obs = data.obj$y)
-
-# Final model
-fit.rgarrote.cb <- perform_rgarrote(data.obj = data.obj, family = "gaussian", cv = ncv, R = nR, nlambda = c(10,10),
-                                 penalty = "combined")
-coef.rgarrote.cb <- fit.rgarrote.cb$fit$coefficients
-
-# Variable selection
-rgarrote.varsel <- names(fit.rgarrote.cb$fit$coefficients[fit.rgarrote.cb$fit$coefficients != 0])[-1]
-rgarrote.varsel <- str_remove_all(rgarrote.varsel, "u.|d.")
-list.varsel$rgarrote <- rgarrote.varsel
-```
-
 ```{r}
 #| label: fig-rgarrotecoefcb 
 #| fig-cap: "Component-specific coefficients of the ridge-garrote regression model ordered by D and U, respectively." 
-tbl.coef.rgarrote.cb <- data.frame("peptide" = str_remove_all(names(coef.rgarrote.cb)[2:(p+1)], "u.|d."), 
-                                   "U" = coef.rgarrote.cb[2:(p+1)], "D" = coef.rgarrote.cb[(p+2):(2*p+1)]) 
+tbl.coef.rgarrote.cb <- data.frame("peptide" = str_remove_all(names(list_coef$rgarrote.cb)[2:(p+1)], "u.|d."), 
+                                   "U" = list_coef$rgarrote.cb[2:(p+1)], "D" = list_coef$rgarrote.cb[(p+2):(2*p+1)]) 
 
 p1 <- tbl.coef.rgarrote.cb %>%
   arrange(D) %>%
@@ -832,61 +652,11 @@ p3 <- tbl.coef.rgarrote.cb %>%
   plot_layout(guides = "collect") & theme(legend.position = 'bottom')
 ```
 
-<!-- <br> -->
-
-<!-- ```{r} -->
-
-<!-- #| label: fig-rgarrlambdacb -->
-
-<!-- #| fig-cap: "Cross-validated prediction error in which each line corresponds to a sequence of lambda1 values, and the different lambda2 values are the 'inner' loop. The vertical bars refer to standard errors of the prediction errors. The optimal combination of lambda1 and lambda2 is highlighted in black." -->
-
-<!-- plot.protogarrote(fit.rgarrote.cb) -->
-
-<!-- ``` -->
-
-### Component
-
-```{r model-rgarrote-cp}
-# CV Predictions
-for(i in 1:ncv){
-  obj.train <- list("y" = data.obj$y[(1:n)[folds != i]], 
-                    "clinical" = data.obj$clinical[(1:n)[folds != i], ], 
-                    "x" = data.obj$x[(1:n)[folds != i], ], 
-                    "u" = data.obj$u[(1:n)[folds != i], ], 
-                    "d" = data.obj$d[(1:n)[folds != i], ])
-  obj.test <- list("y" = data.obj$y[(1:n)[folds == i]], 
-                   "clinical" = data.obj$clinical[(1:n)[folds == i], ], 
-                   "x" = data.obj$x[(1:n)[folds == i], ], 
-                   "u" = data.obj$u[(1:n)[folds == i], ], 
-                   "d" = data.obj$d[(1:n)[folds == i], ])
-  
-  # Ridge-Garrote
-  fit.rgarrote.cv <- perform_rgarrote(obj.train, family = "gaussian", cv = ncv, R = nR, nlambda = c(10,10),
-                                      penalty="component", pflist = pflist)
-  
-  # Predictions
-  data.obj$pred.rgarrote.cp[(1:n)[folds == i]] <- predict_rgarrote(obj = fit.rgarrote.cv, newdata = obj.test)
-}
-
-# Performance 
-tbl.rgarrote.cp <- eval_performance(pred = data.obj$pred.rgarrote.cp, obs = data.obj$y)
-
-# Final model
-fit.rgarrote.cp <- perform_rgarrote(data.obj = data.obj, family = "gaussian", cv = ncv, R = nR, nlambda = c(10,10),
-                                 penalty = "component", pflist=pflist)
-coef.rgarrote.cp <- fit.rgarrote.cp$fit$coefficients
-
-# Variable selection
-rgarrote.varsel <- names(fit.rgarrote.cp$fit$coefficients[fit.rgarrote.cp$fit$coefficients != 0])[-1]
-rgarrote.varsel <- str_remove_all(rgarrote.varsel, "u.|d.")
-list.varsel$rgarrote.cp <- rgarrote.varsel
-```
-
 ```{r}
 #| label: fig-rgarrotecoefcp 
 #| fig-cap: "Component-specific coefficients of the ridge-garrote regression model ordered by D and U, respectively." 
-tbl.coef.rgarrote.cp <- data.frame("peptide" = str_remove_all(names(coef.rgarrote.cp)[2:(p+1)], "u.|d."), 
-                                   "U" = coef.rgarrote.cp[2:(p+1)], "D" = coef.rgarrote.cp[(p+2):(2*p+1)]) 
+tbl.coef.rgarrote.cp <- data.frame("peptide" = str_remove_all(names(list_coef$rgarrote.cp)[2:(p+1)], "u.|d."), 
+                                   "U" = list_coef$rgarrote.cp[2:(p+1)], "D" = list_coef$rgarrote.cp[(p+2):(2*p+1)]) 
 
 p1 <- tbl.coef.rgarrote.cp %>%
   arrange(D) %>%
@@ -934,62 +704,6 @@ p3 <- tbl.coef.rgarrote.cp %>%
   plot_layout(guides = "collect") & theme(legend.position = 'bottom')
 ```
 
-<!-- <br> -->
-
-<!-- ```{r} -->
-
-<!-- #| label: fig-rgarrlambdacb -->
-
-<!-- #| fig-cap: "Cross-validated prediction error in which each line corresponds to a sequence of lambda1 values, and the different lambda2 values are the 'inner' loop. The vertical bars refer to standard errors of the prediction errors. The optimal combination of lambda1 and lambda2 is highlighted in black." -->
-
-<!-- plot.protogarrote(fit.rgarrote.cp) -->
-
-<!-- ``` -->
-
-## Random forest
-
-### without tuning
-
-```{r}
-#| output: false
-
-dataset <- data.frame(y = log2(data_mos$eGFR), age = data_mos$Age, sex = data_mos$Sex, x, pred.rf.notune = NA)
-
-for(i in 1:ncv){
-  train <- dataset[(1:n)[folds != i], ]
-  test <- dataset[(1:n)[folds == i], ]
-  
-  fit.rf <- ranger(y~., data = train %>% select(-pred.rf.notune), num.trees = 500)
-  
-  # Predictions
-   dataset$pred.rf.notune[(1:n)[folds == i]] <- predict(fit.rf,  data = test %>% select(-c(y, pred.rf.notune)))$predictions
-}
-
-# Performance 
-tbl.rf.notune <- eval_performance(pred = dataset$pred.rf.notune, obs = dataset$y)
-```
-
-### tuning
-
-```{r}
-#| output: false
-dataset <- data.frame(y = log2(data_mos$eGFR), age = data_mos$Age, sex = data_mos$Sex, x, pred.rf.tune = NA)
-
-for(i in 1:ncv){
-  train <- dataset[(1:n)[folds != i], ]
-  test <- dataset[(1:n)[folds == i], ]
-  
-  fit.rf <- tuneMtryFast(y~., data = train %>% select(-pred.rf.tune), num.trees = 1000, stepFactor = 0.5, 
-                         doBest = TRUE, trace = FALSE, plot = FALSE, improve = 0.01, verbose = FALSE)
-  
-  # Predictions
-  dataset$pred.rf.tune[(1:n)[folds == i]] <- predict(fit.rf,  data = test %>% select(-c(y, pred.rf.tune)))$predictions
-}
-
-# Performance 
-tbl.rf.tune <- eval_performance(pred = dataset$pred.rf.tune, obs = dataset$y)
-```
-
 # Results
 
 ## Performance measures
@@ -997,24 +711,18 @@ tbl.rf.tune <- eval_performance(pred = dataset$pred.rf.tune, obs = dataset$y)
 ```{r}
 #| label: tbl-results
 #| tbl-cap: "Results of all models"
-
-tbl.res <- data.frame(rbind(tbl.ridge.cb, tbl.ridge.cp,
-                            tbl.lasso,
-                            tbl.lridge.cb, tbl.lridge.cp,
-                            tbl.rlasso.cb, tbl.rlasso.cp, 
-                            tbl.rgarrote.cb, tbl.rgarrote.cp, 
-                            tbl.rf.notune, tbl.rf.tune)) 
-
-tbl.res %>%
-  mutate("method" = c("ridge","ridge", "lasso", 
-                    rep(c("lasso-ridge", "ridge-lasso", "ridge-garrote"), each = 2), 
-                    "random forest (with mtry tuning)", "random forest (without any tuning)"),
-         "penalty" = c("combined", "component", "combined", 
-                       rep(c("combined", "component"), 3), 
-                       "-", "-")) %>%
-  relocate(c(method, penalty), .before = 1) %>%
-  mutate_at(3:7, round, digits = 3) %>%
+tbl_perf %>%
+  data.frame() %>%
+  mutate_at(3:6, round, digits = 3) %>%
   gt()
+
+list_results <- list("performance" = tbl_perf, 
+                     "performance_ncv"=tbl_performance, 
+                     "coef"=list_coef,
+                     "models"=list_model,
+                     "varsel"=list_varsel)
+filename <- paste0("results_mosaique_pnz", propnz, "_nR", nR,"_ncv", ncv,".rds")
+saveRDS(list_results, here::here("output", "example", filename))
 ```
 
 <br>

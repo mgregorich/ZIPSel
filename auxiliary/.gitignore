@@ -1,2 +1,5 @@
 example_methods_files
 example_methods.rmarkdown
+question_simdata.R
+example_datagen_files
+example_datagen.rmarkdown

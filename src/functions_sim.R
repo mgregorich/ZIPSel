@@ -108,8 +108,8 @@ data_analysis <- function(df, data.val, n, p, ncv=10, nR=2, nlams=10, pflist=lis
   data.obj <- generate_dataobj(y = df$data_ana$y, x = df$data_ana$x, clinical = NULL)
   
   # CV 
-  methnames <- c("oracle", "lasso", "ridge", "lridge", "rlasso", "rgarrote", "random forest")
-  tbl_perf <- data.frame("methods" = rep(methnames, each = 2)[-c(1,3,14)],
+  methnames <- c("oracle", "lasso", "ridge", "lasso-ridge", "ridge-lasso", "ridge-garrote", "random forest")
+  tbl_perf <- data.frame("model" = rep(methnames, each = 2)[-c(1,3,14)],
                          "penalty" = c("-",rep(c("combined", "component"), times = 5)[-2], "-"),
                          R2 = NA, RMSE = NA, MAE = NA, C = NA, CS = NA)
   tbl_coef <- cbind.data.frame("var"=paste0("V", 1:nrow(df$true_coef)), df$true_coef)
@@ -122,7 +122,7 @@ data_analysis <- function(df, data.val, n, p, ncv=10, nR=2, nlams=10, pflist=lis
   beta_oracle <- rep(0, ncol(X))
   beta_oracle[which(beta_true!=0)] <- coef(fit.oracle)[-1]
   beta_oracle[is.na(beta_oracle)] <- 0 
-  data.val$pred.oracle <-  c(cbind(data.val$u, data.val$d) %*% beta_oracle)
+  data.val$pred.oracle <-  c(cbind(data.val$u, data.val$d) %*% beta_oracle) # intercept!!!!
   tbl_perf[1, 3:7] <- eval_performance(pred = data.val$pred.oracle, obs = data.val$y)
   tbl_coef$beta_oracle_u <- beta_oracle[1:(p)]
   tbl_coef$beta_oracle_d <- beta_oracle[(p+1):(2*p)]
@@ -231,7 +231,7 @@ summarize_scenario <- function(filename, scn, scn_res){
   # -- Oracle 
   tbl_performance <- tbl_iters_performance %>%
     data.frame() %>%
-    group_by(methods, penalty) %>%
+    group_by(model, penalty) %>%
     summarise("RMSE.est" = mean(RMSE, na.rm = T), "RMSE.med" = median(RMSE, na.rm = T), 
               "RMSE.lo" = quantile(RMSE, 0.05, na.rm = T), "RMSE.up" = quantile(RMSE, 0.95, na.rm = T),
               "R2.est" = mean(R2, na.rm = T), "R2.med" = median(R2, na.rm = T),
