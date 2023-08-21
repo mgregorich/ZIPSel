@@ -10,8 +10,7 @@
 simulate_scenario <- function(scn, dsgn){
   
   ## Remove later
-  # scn=scenarios[1,]
-  # dsgn=sim_design[[scenarios[1,]$dsgn]]
+  # nr=3; scn=scenarios[nr,]; dsgn=sim_design[[scenarios[nr,]$dsgn]]
   
   filename <- paste0("sim_i", scn$iter, "_n", scn$n, "_p", scn$p, "_beta", scn$beta_max, "_a", scn$a, 
                      "_epsstd", scn$epsstd, "_propnz", scn$prop.nonzero, "_sampthresh", scn$sampthresh, ".rds")
@@ -45,7 +44,7 @@ simulate_scenario <- function(scn, dsgn){
 data_generation <- function(dsgn, n, p, beta_max, a, epsstd, prop.nonzero, sampthresh){
   
   # # Remove later (parameter input for function)
-  # dsgn=dsgn; n=scn$n; p=scn$p; ngroups=scn$ngroups; a=scn$0.5; epsstd=scn$epsstd;
+  # dsgn=dsgn; n=100000; p=scn$p; ngroups=scn$ngroups; a=scn$a; epsstd=scn$epsstd;
   # prop.nonzero=scn$prop.nonzero; sampthresh=scn$sampthresh; beta_max=scn$beta_max
   
   # Parameter
@@ -96,11 +95,12 @@ data_analysis <- function(df, data.val, n, p, ncv=10, nR=2, nlams=10, pflist=lis
   
   # Remove later
   # df = data_iter
+  # data.val = data.val
   # n=scn$n
   # p=scn$p
   # ngroups=scn$ngroups
   # ncv=10; nR=2; nlams=10; pflist=list(c(1,2), c(2,1), c(1,3))
-  
+
   # Parameter
   ngroups = 4
   
@@ -108,9 +108,9 @@ data_analysis <- function(df, data.val, n, p, ncv=10, nR=2, nlams=10, pflist=lis
   data.obj <- generate_dataobj(y = df$data_ana$y, x = df$data_ana$x, clinical = NULL)
   
   # CV 
-  methnames <- c("oracle", "lasso", "ridge", "lasso-ridge", "ridge-lasso", "ridge-garrote", "random forest")
-  tbl_perf <- data.frame("model" = rep(methnames, each = 2)[-c(1,3,14)],
-                         "penalty" = c("-",rep(c("combined", "component"), times = 5)[-2], "-"),
+  methnames <- c("oracle", "lasso", "ridge", "lasso-ridge", "ridge-lasso", "ridge-garrote", "lasso-garrote", "random forest")
+  tbl_perf <- data.frame("model" = methnames,
+                         "penalty" = c("-",rep(c("combined"), times = 6), "-"),
                          R2 = NA, RMSE = NA, MAE = NA, C = NA, CS = NA)
   tbl_coef <- cbind.data.frame("var"=paste0("V", 1:nrow(df$true_coef)), df$true_coef)
   
@@ -122,7 +122,7 @@ data_analysis <- function(df, data.val, n, p, ncv=10, nR=2, nlams=10, pflist=lis
   beta_oracle <- rep(0, ncol(X))
   beta_oracle[which(beta_true!=0)] <- coef(fit.oracle)[-1]
   beta_oracle[is.na(beta_oracle)] <- 0 
-  data.val$pred.oracle <-  c(cbind(data.val$u, data.val$d) %*% beta_oracle) # intercept!!!!
+  data.val$pred.oracle <-  fit.oracle$coefficients[1] + c(cbind(data.val$u, data.val$d) %*% beta_oracle) # intercept!!!!
   tbl_perf[1, 3:7] <- eval_performance(pred = data.val$pred.oracle, obs = data.val$y)
   tbl_coef$beta_oracle_u <- beta_oracle[1:(p)]
   tbl_coef$beta_oracle_d <- beta_oracle[(p+1):(2*p)]
@@ -133,70 +133,60 @@ data_analysis <- function(df, data.val, n, p, ncv=10, nR=2, nlams=10, pflist=lis
   tbl_perf[2, 3:7] <- eval_performance(pred = data.val$pred.lasso, obs = data.val$y)
   tbl_coef$beta_lasso_cb <- fit.lasso.cv$coefficients[-1]
   
-  # --- Ridge (penalty: combined and component)
-  fit.ridge.cb <- perform_penreg(data.obj, family = "gaussian",  alpha = 0, nl1 = nlams, cv = ncv, R = nR, penalty = "combined")
+  # --- Ridge 
+  fit.ridge.cb <- perform_penreg(data.obj, family = "gaussian",  alpha = 0, nl1 = nlams, cv = ncv, R = nR, 
+                                 penalty = "combined", split_vars = TRUE)
   data.val$pred.ridge.cb <- predict_penreg(obj = fit.ridge.cb, newdata = data.val, model = "ridge")
   tbl_perf[3, 3:7] <- eval_performance(pred = data.val$pred.ridge.cb, obs = data.val$y)
   tbl_coef$beta_ridge_cb_u <- fit.ridge.cb$coefficients[2:(p+1)]
   tbl_coef$beta_ridge_cb_d <- fit.ridge.cb$coefficients[(p+2):(2*p+1)]
   
-  fit.ridge.cp <- perform_penreg(data.obj, family = "gaussian", alpha = 0, nl1 = nlams, cv = ncv, R = nR, penalty = "component", pflist = pflist)
-  data.val$pred.ridge.cp <- predict_penreg(obj=fit.ridge.cp, newdata = data.val, model = "ridge")
-  tbl_perf[4, 3:7] <- eval_performance(pred = data.val$pred.ridge.cp, obs = data.val$y)
-  tbl_coef$beta_ridge_cp_u <- fit.ridge.cp$coefficients[2:(p+1)]
-  tbl_coef$beta_ridge_cp_d <- fit.ridge.cp$coefficients[(p+2):(2*p+1)]
   
-  
-  # --- Lasso-ridge (penalty: combined and component)
-  fit.lridge.cb <- perform_lridge(data.obj, family = "gaussian", cv = ncv, R = nR, nlambda = rep(nlams, 2), penalty = "combined")
+  # --- Lasso-ridge 
+  fit.lridge.cb <- perform_lridge(data.obj, family = "gaussian", cv = ncv, R = nR, nlambda = rep(nlams, 2), 
+                                  penalty = "combined", split_vars = TRUE)
   data.val$pred.lridge.cb <- predict_lridge(obj = fit.lridge.cb, newdata = data.val)
-  tbl_perf[5, 3:7] <- eval_performance(pred = data.val$pred.lridge.cb, obs = data.val$y)
+  tbl_perf[4, 3:7] <- eval_performance(pred = data.val$pred.lridge.cb, obs = data.val$y)
   tbl_coef$beta_lridge_cb_u <- fit.lridge.cb$coefficients[2:(p+1)]
   tbl_coef$beta_lridge_cb_d <- fit.lridge.cb$coefficients[(p+2):(2*p+1)]
+
   
-  fit.lridge.cp <- perform_lridge(data.obj, family = "gaussian", cv = ncv, R = nR, nlambda = rep(nlams, 2), penalty = "component", pflist = pflist)
-  data.val$pred.lridge.cp <- predict_lridge(obj = fit.lridge.cp, newdata = data.val)
-  tbl_perf[6, 3:7] <- eval_performance(pred = data.val$pred.lridge.cp, obs = data.val$y)
-  tbl_coef$beta_lridge_cp_u <- fit.lridge.cp$coefficients[2:(p+1)]
-  tbl_coef$beta_lridge_cp_d <- fit.lridge.cp$coefficients[(p+2):(2*p+1)]
-  
-  # --- Ridge-lasso (penalty: combined and component)
-  fit.rlasso.cb <- perform_rlasso(data.obj, family = "gaussian", cv = ncv, R = nR, nlambda = rep(nlams, 2), penalty = "combined")
+  # --- Ridge-lasso 
+  fit.rlasso.cb <- perform_rlasso(data.obj, family = "gaussian", cv = ncv, R = nR, nlambda = rep(nlams, 2), 
+                                  penalty = "combined", split_vars = TRUE)
   data.val$pred.rlasso.cb <- predict_rlasso(obj = fit.rlasso.cb, newdata = data.val)
-  tbl_perf[7, 3:7] <- eval_performance(pred = data.val$pred.rlasso.cb, obs = data.val$y)
+  tbl_perf[5, 3:7] <- eval_performance(pred = data.val$pred.rlasso.cb, obs = data.val$y)
   tbl_coef$beta_rlasso_cb_x <- fit.rlasso.cb$coefficients[-1]
 
-  fit.rlasso.cp <- perform_rlasso(data.obj, family = "gaussian", cv = ncv, R = nR, nlambda = rep(nlams, 2), penalty = "component", pflist = pflist)
-  data.val$pred.rlasso.cp <- predict_rlasso(obj = fit.rlasso.cp, newdata = data.val)
-  tbl_perf[8, 3:7] <- eval_performance(pred = data.val$pred.rlasso.cp, obs = data.val$y)
-  tbl_coef$beta_rlasso_cp_x <- fit.rlasso.cp$coefficients[-1]
-
   # --- Ridge-garrote
-  fit.rgarrote.cb <- perform_rgarrote(data.obj, family = "gaussian", cv = ncv, R = nR, nlambda = rep(nlams, 2), penalty = "combined")
+  fit.rgarrote.cb <- perform_rgarrote(data.obj, family = "gaussian", cv = ncv, R = nR, nlambda = rep(nlams, 2),
+                                      penalty = "combined", alpha1 = 0, split_vars = TRUE)
   data.val$pred.rgarrote.cb <- predict_rgarrote(obj = fit.rgarrote.cb, newdata = data.val)
-  tbl_perf[9, 3:7] <- eval_performance(pred = data.val$pred.rgarrote.cb, obs = data.val$y)
+  tbl_perf[6, 3:7] <- eval_performance(pred = data.val$pred.rgarrote.cb, obs = data.val$y)
   tbl_coef$beta_rgarrote_cb_u <- fit.rgarrote.cb$coefficients[2:(p+1)]
   tbl_coef$beta_rgarrote_cb_d <- fit.rgarrote.cb$coefficients[(p+2):(2*p+1)]
-  
-  fit.rgarrote.cp <- perform_rgarrote(data.obj, family = "gaussian", cv = ncv, R = nR, nlambda = rep(nlams, 2), penalty = "component", pflist = pflist)
-  data.val$pred.rgarrote.cp <- predict_rgarrote(obj = fit.rgarrote.cp, newdata = data.val)
-  tbl_perf[10, 3:7] <- eval_performance(pred = data.val$pred.rgarrote.cp, obs = data.val$y)
-  tbl_coef$beta_rgarrote_cp_u <- fit.rgarrote.cp$coefficients[2:(p+1)]
-  tbl_coef$beta_rgarrote_cp_d <- fit.rgarrote.cp$coefficients[(p+2):(2*p+1)]
+
+  # Lasso-garrote
+  fit.lgarrote.cb <- perform_rgarrote(data.obj, family = "gaussian", cv = ncv, R = nR, nlambda = rep(nlams, 2),
+                                      penalty = "combined", alpha1 = 1,split_vars = FALSE)
+  data.val$pred.lgarrote.cb <- predict_rgarrote(obj = fit.lgarrote.cb, newdata = data.val)
+  tbl_perf[7, 3:7] <- eval_performance(pred = data.val$pred.lgarrote.cb, obs = data.val$y)
+  tbl_coef$beta_lgarrote_cb_u <- fit.lgarrote.cb$coefficients[2:(p+1)]
+  tbl_coef$beta_lgarrote_cb_d <- fit.lgarrote.cb$coefficients[(p+2):(2*p+1)]
   
   # --- Random forest
   train <- data.frame(y = data.obj$y, data.obj$x)
-  fit.rf <- ranger(y~., data = train, num.trees = 500)
+  fit.rf <- ranger(y~., data = train, num.trees = 1000)
   data.val$pred.rf <- predict(fit.rf, data = data.val$x)$predictions
-  tbl_perf[11, 3:7] <- eval_performance(pred = data.val$pred.rf , obs = data.val$y)
+  tbl_perf[8, 3:7] <- eval_performance(pred = data.val$pred.rf , obs = data.val$y)
   
   # Merge results
   # Variable selection
   groupsize <- p/ngroups
-  list_models <- list(fit.lasso.cv, fit.ridge.cb, fit.ridge.cp, 
-                      fit.rlasso.cb, fit.rlasso.cp, 
-                      fit.lridge.cb, fit.lridge.cp,
-                      fit.rgarrote.cb, fit.rgarrote.cp)
+  list_models <- list(fit.lasso.cv, fit.ridge.cb, 
+                      fit.rlasso.cb,
+                      fit.lridge.cb,
+                      fit.rgarrote.cb, fit.lgarrote.cb)
   list_sel <- list()
   for(l in 1:length(list_models)){
     fit.model <-  list_models[[l]]
@@ -205,11 +195,13 @@ data_analysis <- function(df, data.val, n, p, ncv=10, nR=2, nlams=10, pflist=lis
   }
   tbl_varsel <- do.call(rbind, lapply(list_sel, function(x) x[[1]]))
   tbl_groupsel <- do.call(rbind, lapply(list_sel, function(x) x[[2]])) 
+  tbl_allsel <- do.call(rbind, lapply(list_sel, function(x) x[[3]])) 
   
   out <- list("est_perf" = tbl_perf, 
               "est_coef" = tbl_coef,
               "est_varsel" = tbl_varsel, 
-              "est_groupsel" = tbl_groupsel)
+              "est_groupsel" = tbl_groupsel,
+              "est_allsel" = tbl_allsel)
   return(out)
 }
 
@@ -224,6 +216,7 @@ summarize_scenario <- function(filename, scn, scn_res){
   tbl_iters_performance <- do.call(rbind, lapply(scn_res, function(x) x$est_perf))
   tbl_iters_varsel <- do.call(rbind, lapply(scn_res, function(x) x$est_varsel))
   tbl_iters_groupsel <- do.call(rbind, lapply(scn_res, function(x) x$est_groupsel))
+  tbl_iters_allsel <- do.call(rbind, lapply(scn_res, function(x) x$est_allsel))
   tbl_iters_truecoef <- do.call(rbind, lapply(scn_res, function(x) x$true_coef)) %>% merge(scn, . )
   tbl_iters_estcoef <- do.call(rbind, lapply(scn_res, function(x) x$est_coef)) %>% merge(scn, . )
   niter <- max(tbl_iters_varsel$i)
@@ -248,8 +241,7 @@ summarize_scenario <- function(filename, scn, scn_res){
   
   tbl_varsel <- tbl_iters_varsel %>% 
     group_by(model, penalty, varname) %>% 
-    summarise("truedir_var" = sum(truedir_var)/niter, "falsedir_var" = sum(falsedir_var)/niter,
-              "truepos_var" = sum(truepos_var)/niter, "trueneg_var" = sum(trueneg_var)/niter,
+    summarise("truepos_var" = sum(truepos_var)/niter, "trueneg_var" = sum(trueneg_var)/niter,
               "falsepos_var" = sum(falsepos_var)/niter, "falseneg_var" = sum(falseneg_var)/niter) %>%
     data.frame() %>%
     arrange(varname) %>%
@@ -263,9 +255,21 @@ summarize_scenario <- function(filename, scn, scn_res){
     data.frame()  %>%
     merge(scn, . )
   
+  tbl_allsel <- tbl_iters_allsel %>% 
+    group_by(model, penalty) %>% 
+    summarise("FPDR" = sum(FPDR)/niter, "FNDR" = sum(FNDR)/niter,
+              "TPDR" = sum(TPDR)/niter, "TNDR" = sum(TNDR)/niter) %>%
+    data.frame()  %>%
+    merge(scn, . )
+  
+  tbl_iters_performance <- tbl_iters_performance %>% merge(scn, . )
+  tbl_iters_varsel <- tbl_iters_varsel %>% merge(scn, . )
+  tbl_iters_groupsel <- tbl_iters_groupsel %>% merge(scn, . )
+  tbl_iters_allsel <- tbl_iters_allsel %>% merge(scn, . )
+  
   # Save results
-  list_results <- list("results" = list("performance" = tbl_performance, "varsel" = tbl_varsel, "groupsel" = tbl_groupsel),
-                       "iters" = list("performance" = tbl_iters_performance, "varsel" = tbl_iters_varsel, "groupsel" = tbl_iters_groupsel),
+  list_results <- list("results" = list("performance" = tbl_performance, "varsel" = tbl_varsel, "groupsel" = tbl_groupsel, "allsel" = tbl_allsel),
+                       "iters" = list("performance" = tbl_iters_performance, "varsel" = tbl_iters_varsel, "groupsel" = tbl_iters_groupsel, "allsel" = tbl_iters_allsel),
                        "data" = list("gen" = tbl_iters_datagen, "ana" = tbl_iters_dataana),
                        "coef" = list("truecoef" = tbl_iters_truecoef, "estcoef" = tbl_iters_estcoef))
   saveRDS(list_results, here::here(sim.path, paste0(filename , ".rds")))  
@@ -280,16 +284,19 @@ evaluate_scenarios <- function(sim.files, sim.path){
   tbl_perf <- do.call(rbind, lapply(res, function(x) x$results$performance))
   tbl_varsel <- do.call(rbind, lapply(res, function(x) x$results$varsel))
   tbl_groupsel <- do.call(rbind, lapply(res, function(x) x$results$groupsel))
-
+  tbl_allsel <- do.call(rbind, lapply(res, function(x) x$results$allsel))
+  
   tbl_iters_perf <- do.call(rbind, lapply(res, function(x) x$iters$performance))
   tbl_iters_varsel <- do.call(rbind, lapply(res, function(x) x$iters$varsel))
   tbl_iters_groupsel <- do.call(rbind, lapply(res, function(x) x$iters$groupsel))
+  tbl_iters_allsel <- do.call(rbind, lapply(res, function(x) x$iters$allsel))
   
   tbl_estcoef <- do.call(rbind, lapply(res, function(x) x$coef$estcoef))
 
   # Results per iteration
-  tbl_res <- list("performance"=list("tbl_perf"=tbl_perf, "tbl_varsel"=tbl_varsel, "tbl_groupsel"=tbl_groupsel), 
-                  "iters" = list("tbl_iters_perf"=tbl_iters_perf, "tbl_iters_varsel"=tbl_iters_varsel, "tbl_iters_groupsel"=tbl_iters_groupsel),
+  tbl_res <- list("performance"=list("tbl_perf"=tbl_perf, "tbl_varsel"=tbl_varsel, "tbl_groupsel"=tbl_groupsel, "tbl_allsel"=tbl_allsel), 
+                  "iters" = list("tbl_iters_perf"=tbl_iters_perf, "tbl_iters_varsel"=tbl_iters_varsel, 
+                                 "tbl_iters_groupsel"=tbl_iters_groupsel, "tbl_iters_allsel"=tbl_iters_allsel),
                   "coef" = tbl_estcoef)
   saveRDS(tbl_res, here::here(sim.path, "tbl_scenario_results.rds"))
 

@@ -7,13 +7,13 @@
 
 # Parameter
 set.seed(666)
-iter = 2
+iter = 5
 n <- c(100,200,400)         # sample size
 p <- c(200,400)             # number of candidate predictors
 rhomat <- list(rbind(c(.8,.2), c(.8,.2), c(.8,.2), c(.4,.2)))   # correlation ranges in each group
 beta_max <- 5               # maximum coefficient
-a <- 0.5                    # controls balance of U and D influence on y
-epsstd <- c(3, 6)
+a <- c(0.2165, 0.28, 1)                    # medium balance of U and D influence on y
+epsstd <- c(5, 10)
 prop.nonzero <- 0.5         
 sampthresh <- 0.05
 scenario <- "D"

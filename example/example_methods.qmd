@@ -39,7 +39,7 @@ source(here::here("src","functions_aux.R"))
 # --- Initialization
 ncv = 10
 nR  = 2
-#probnz = 0.9
+propnz = 0.9
 data_mos <- readRDS(here::here("data", "mosaique", "Large_Mariella.rds"))
 data_peptides <- data_mos[,7:ncol(data_mos)]
 colnames(data_peptides) <- paste0("P",1:ncol(data_peptides))
@@ -48,7 +48,7 @@ data_peptides <- apply(as.matrix(data_peptides), 2, as.numeric)
 clin.vars <- c("Age", "Sex", "eGFR")
 
 # Peptide subset selection due to computational feasibility based on max non-zero entries
-ind <- which(apply(data_peptides, 2, assess_nonzeros, prop_nonzero = 0.90))
+ind <- which(apply(data_peptides, 2, assess_nonzeros, prop_nonzero = propnz))
 data_peptides <- as.matrix(data_peptides[,ind])
 data_mos <- data.frame(cbind(data_mos[,1:6],data_peptides)) %>%
   dplyr::rename("Sex" = Gender)
@@ -113,6 +113,8 @@ p1 <- data_mos %>%
   mutate("P" = 1:n()) %>%
   ggplot(aes(x = P, y = value)) +
   geom_line() +
+  geom_vline(xintercept=1333, col="red", linetype="dashed")+
+  geom_hline(yintercept=0.9, col="red", linetype="dashed")+
   ggtitle("Data from Mosaiques Diagnostics") +
   scale_x_continuous("Index of variable") +
   scale_y_continuous("Proportion of zero-inflation") +
@@ -182,15 +184,24 @@ for(i in 1:ncv){
                    "d" = data.obj$d[(1:n)[folds == i], ])
   
   # Models
-  fit.lasso.cb <- perform_penreg(obj.train, family = "gaussian", alpha1 = 1, cv = ncv, R = nR, penalty = "combined")
-  fit.ridge.cb <- perform_penreg(obj.train, family="gaussian", alpha1 = 0, cv=ncv, R=nR, penalty = "combined")
-  fit.ridge.cp <- perform_penreg(obj.train, family = "gaussian", alpha1 = 0, cv = ncv, R = nR, penalty  =  "component", pflist = pflist)
-  fit.lridge.cb <- perform_lridge(obj.train, family = "gaussian", cv = ncv, R = nR, penalty = "combined")
-  fit.lridge.cp <- perform_lridge(obj.train, family = "gaussian", cv = ncv, R = nR, penalty = "component", pflist = pflist)
-  fit.rlasso.cb <- perform_rlasso(obj.train, family = "gaussian", cv = ncv, R = nR, penalty = "combined")
-  fit.rlasso.cp <- perform_rlasso(obj.train, family = "gaussian", cv = ncv, R = nR, penalty = "component", pflist = pflist)
-  fit.rgarrote.cb <- perform_rgarrote(obj.train, family = "gaussian", cv = ncv, R = nR, penalty = "combined")
-  fit.rgarrote.cp <- perform_rgarrote(obj.train, family = "gaussian", cv = ncv, R = nR, penalty = "component", pflist = pflist)
+  fit.lasso.cb <- perform_penreg(obj.train, family = "gaussian", alpha1 = 1, cv = ncv, R = nR, penalty = "combined", 
+                                 split_vars = FALSE)
+  fit.ridge.cb <- perform_penreg(obj.train, family="gaussian", alpha1 = 0, cv=ncv, R=nR, penalty = "combined", 
+                                 split_vars = TRUE)
+  fit.ridge.cp <- perform_penreg(obj.train, family = "gaussian", alpha1 = 0, cv = ncv, R = nR, penalty  =  
+                                   "component", pflist = pflist, split_vars = TRUE)
+  fit.lridge.cb <- perform_lridge(obj.train, family = "gaussian", cv = ncv, R = nR, penalty = "combined", 
+                                  split_vars = TRUE)
+  fit.lridge.cp <- perform_lridge(obj.train, family = "gaussian", cv = ncv, R = nR, penalty = "component", 
+                                  pflist = pflist, split_vars = TRUE)
+  fit.rlasso.cb <- perform_rlasso(obj.train, family = "gaussian", cv = ncv, R = nR, penalty = "combined", 
+                                  split_vars = TRUE)
+  fit.rlasso.cp <- perform_rlasso(obj.train, family = "gaussian", cv = ncv, R = nR, penalty = "component", 
+                                  pflist = pflist, split_vars = TRUE)
+  fit.rgarrote.cb <- perform_rgarrote(obj.train, family = "gaussian", cv = ncv, R = nR, penalty = "combined", 
+                                      split_vars = TRUE)
+  fit.rgarrote.cp <- perform_rgarrote(obj.train, family = "gaussian", cv = ncv, R = nR, penalty = "component", 
+                                      pflist = pflist, split_vars = TRUE)
   
   # Predictions
   data.obj$pred.lasso.cb[(1:n)[folds == i]] <- predict_penreg(obj = fit.lasso.cb, newdata = obj.test, model = "lasso")
@@ -218,15 +229,24 @@ for(i in 1:ncv){
 
 # Final model
 list_model <- list()
-list_model$fit.lasso <- perform_penreg(data.obj = data.obj, family = "gaussian", cv = ncv, R = nR, alpha1 = 1, penalty = "combined")
-list_model$fit.ridge.cb <- perform_penreg(data.obj = data.obj, family = "gaussian", cv = ncv, R = nR, penalty = "combined")
-list_model$fit.ridge.cp <- perform_penreg(data.obj = data.obj, family = "gaussian", cv = ncv, R = nR, penalty = "component", pflist = pflist)
-list_model$fit.lridge.cb <- perform_lridge(data.obj = data.obj, family = "gaussian", cv = ncv, R = nR, penalty = "combined")
-list_model$fit.lridge.cp <- perform_lridge(data.obj = data.obj, family = "gaussian", cv = ncv, R = nR, penalty = "component", pflist = pflist)
-list_model$fit.rlasso.cb <- perform_rlasso(data.obj = data.obj, family = "gaussian", cv = ncv, R = nR, penalty = "combined")
-list_model$fit.rlasso.cp <- perform_rlasso(data.obj = data.obj, family = "gaussian", cv = ncv, R = nR, penalty = "component", pflist = pflist)
-list_model$fit.rgarrote.cb <- perform_rlasso(data.obj = data.obj, family = "gaussian", cv = ncv, R = nR, penalty = "combined")
-list_model$fit.rgarrote.cp <- perform_rlasso(data.obj = data.obj, family = "gaussian", cv = ncv, R = nR, penalty = "component", pflist = pflist)
+list_model$fit.lasso <- perform_penreg(data.obj = data.obj, family = "gaussian", cv = ncv, R = nR, alpha1 = 1, penalty = "combined",
+                                       split_vars = FALSE)
+list_model$fit.ridge.cb <- perform_penreg(data.obj = data.obj, family = "gaussian", cv = ncv, R = nR, penalty = "combined", 
+                                          split_vars = TRUE)
+list_model$fit.ridge.cp <- perform_penreg(data.obj = data.obj, family = "gaussian", cv = ncv, R = nR, penalty = "component",
+                                          pflist = pflist, split_vars = TRUE)
+list_model$fit.lridge.cb <- perform_lridge(data.obj = data.obj, family = "gaussian", cv = ncv, R = nR, penalty = "combined", 
+                                           split_vars = TRUE)
+list_model$fit.lridge.cp <- perform_lridge(data.obj = data.obj, family = "gaussian", cv = ncv, R = nR, penalty = "component", 
+                                           pflist = pflist, split_vars = TRUE)
+list_model$fit.rlasso.cb <- perform_rlasso(data.obj = data.obj, family = "gaussian", cv = ncv, R = nR, penalty = "combined", 
+                                           split_vars = TRUE)
+list_model$fit.rlasso.cp <- perform_rlasso(data.obj = data.obj, family = "gaussian", cv = ncv, R = nR, penalty = "component",
+                                           pflist = pflist, split_vars = TRUE)
+list_model$fit.rgarrote.cb <- perform_rlasso(data.obj = data.obj, family = "gaussian", cv = ncv, R = nR, penalty = "combined", 
+                                             split_vars = TRUE)
+list_model$fit.rgarrote.cp <- perform_rlasso(data.obj = data.obj, family = "gaussian", cv = ncv, R = nR, penalty = "component", 
+                                             pflist = pflist, split_vars = TRUE)
 
 # Coefficients
 list_coef <- list()
@@ -743,7 +763,7 @@ pcal_ridge_cb + pcal_ridge_cp
 ### Lasso
 
 ```{r}
-pcal_lasso <- plot_calibration(pred = data.obj$pred.lasso, obs = data_mos$log2eGFR, fig.title = "penalty: combined")
+pcal_lasso <- plot_calibration(pred = data.obj$pred.lasso.cb, obs = data_mos$log2eGFR, fig.title = "penalty: combined")
 pcal_lasso
 ```
 

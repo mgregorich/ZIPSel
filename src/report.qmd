@@ -20,7 +20,6 @@ format:
     self-contained: true
 ---
 
-
 # Preliminaries
 
 ```{r setup, include=FALSE}
@@ -36,56 +35,69 @@ pacman::p_load(ggplot2, parallel, future.apply, stringr, kableExtra,
 
 # Paths
 out.path <- "output"
-sim.date <- Sys.Date()
+sim.date <- "2023-08-21"
 sim.file <- paste0("sim_", sim.date,"/")
 sim.path <- here::here(out.path, sim.file)
-ggcols <- c("black", "grey45", "deepskyblue3", "royalblue3", "seagreen4", "lightcoral", "goldenrod3")
-
+ggcols <- c("black", "grey45", "deepskyblue3", "royalblue3", "seagreen4", "lightcoral", "darkred","goldenrod3")
+methnames <- c("oracle", "lasso", "ridge", "ridge-lasso", "lasso-ridge", "ridge-garrote", "lasso-garrote", "random forest")
 # Read in results
 tbl_res <- readRDS(here::here(sim.path, "tbl_scenario_results.rds"))
 
 tbl_perf <- tbl_res$performance$tbl_perf  %>% 
-  mutate(model = fct_relevel(model, c("oracle", "lasso", "ridge", "rlasso", "lridge", "rgarrote", "random forest")))
+  mutate(model = fct_relevel(model, methnames))
+tbl_iters_perf <- tbl_res$iters$tbl_iters_perf  %>% 
+  mutate(model = fct_relevel(model, methnames))
 tbl_varsel <- tbl_res$performance$tbl_varsel %>% 
-  mutate(model = fct_relevel(model, c("oracle", "lasso", "ridge", "rlasso", "lridge", "rgarrote", "random forest")))
+  mutate(model = fct_relevel(model, methnames))
 tbl_groupsel <- tbl_res$performance$tbl_groupsel
 ```
 
-
 # Performance
+
 ```{r}
 tbl_perf %>%
   dplyr::select(n, p, epsstd, model, penalty, RMSE.est) %>%
   filter(penalty %in% c("combined", "-")) %>%
+  mutate(n = to_factor(n)) %>%
   arrange(model, penalty) %>%
   pivot_wider(id_cols = c(n, p, epsstd), values_from = RMSE.est, names_from = model) %>%
   nested_loop_plot(x = "n", steps = "epsstd", grid_cols ="p" ,
-                   steps_y_base = 2.5, steps_y_height = 0.5,
+                   steps_y_base = 0, steps_y_height = 0.5,
                    steps_names = "Residual variance",
-                   x_name = "Sample size", y_name = "Averaged RMSE",
+                   x_name = "Sample size", y_name = "Averaged RMSPE",
                    spu_x_shift = 1.5,
-                   grid_scales="free_y",
+                   grid_scales = "free_y",
                    colors = ggcols,
                    steps_values_annotate = TRUE, steps_annotation_size = 3,
                    hline_intercept = 0,
-                   y_expand_add = c(2, 0.25),
+                   y_expand_add = c(1, 0.25),
                    post_processing = list(
                        add_custom_theme = list(
-                         text=element_text(size=14),
+                         text=element_text(size = 14),
                            axis.text.x = element_text(size = 14,
                                                       angle = -90,
                                                       vjust = 0.5))
                    )) 
+```
+```{r}
+tbl_iters_perf %>%
+  ggplot(aes(x=model, y=RMSE)) +
+    stat_boxplot(geom = "errorbar", width = 0.35, position=position_dodge(0.25)) + 
+    geom_boxplot(alpha=0.4, width=0.35, position=position_dodge(0.25),outlier.shape = 21) +
+    theme_bw() +
+  facet_grid(epsstd~p) +
+  theme( axis.text.x = element_text(size = 10, angle = 45, vjust = 1, hjust=1))
 ```
 
 ```{r}
 tbl_perf %>%
   dplyr::select(n, p, epsstd, model, penalty, R2.est) %>%
   filter(penalty %in% c("combined", "-")) %>%
+  mutate(n = to_factor(n)) %>%
   arrange(model, penalty) %>%
   pivot_wider(id_cols = c(n, p, epsstd), values_from = R2.est, names_from = model) %>%
   nested_loop_plot(x = "n", steps = "epsstd", grid_cols ="p" ,
-                   steps_y_base = 0, steps_y_height = 0.05,
+                   steps_y_base = -0.05, steps_y_height = 0.05,
                    steps_names = "Residual variance",
                    x_name = "Sample size", y_name = "Averaged R2",
                    spu_x_shift = 1.5,
@@ -93,7 +105,7 @@ tbl_perf %>%
                    colors = ggcols,
                    steps_values_annotate = TRUE, steps_annotation_size = 3,
                    hline_intercept = 0,
-                   y_expand_add = c(0.1, 0.25),
+                   y_expand_add = c(0.1, 0.1),
                    post_processing = list(
                        add_custom_theme = list(
                          text=element_text(size=14),
@@ -107,6 +119,7 @@ tbl_perf %>%
 tbl_perf %>%
   dplyr::select(n, p, epsstd, model, penalty, CS.est) %>%
   filter(penalty %in% c("combined", "-")) %>%
+  mutate(n = to_factor(n)) %>%
   arrange(model, penalty) %>%
   pivot_wider(id_cols = c(n, p, epsstd), values_from = CS.est, names_from = model) %>%
   nested_loop_plot(x = "n", steps = "epsstd", grid_cols ="p" ,
@@ -128,13 +141,5 @@ tbl_perf %>%
                    )) 
 ```
 
-
 # Variable selection
-
-# ```{r}
-# tbl_varsel %>%
-#   filter(epsstd == 3 & p==200) %>%
-#   mutate(varname == to_numeric(str_remove_all(varname, "V")))
-#   ggplot(aes(x=n, y=))
-# ```
 

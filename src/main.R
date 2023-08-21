@@ -25,16 +25,18 @@ source(here::here("src","functions_aux.R"))
 source(here::here("src","functions_sim.R"))
 
 # Load & save setup
-# source("src/setup.R")
+source("src/setup.R")
 setup <- readRDS(here::here("src", "scenario_setup.rds"))
 scenarios <- setup[[1]]
 sim_design <- setup[[2]]
-scenarios$iter <- 2
+
+scenarios$iter <- 5
+
 
 # ======================= Simulation ===========================================
 
 # --- Run through all scenarios
-plan(multisession, workers = detectCores()*.75)
+plan(multisession, workers = detectCores()*.5)
 invisible(future_lapply(1:nrow(scenarios), function(k) {
   tryCatch({simulate_scenario(scn=scenarios[k,], dsgn=sim_design[[scenarios[k,]$dsgn]])
   }, error = function(e) {
