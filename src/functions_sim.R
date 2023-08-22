@@ -1,7 +1,7 @@
 #' ==============================================================================
 #' Author: MG
 #' Date: 09/05/2023
-#' Info: Functions only relevant for the Monte Carlo simualtion
+#' Info: Functions only relevant for the Monte Carlo simulation
 #' ==============================================================================
 
 
@@ -10,7 +10,7 @@
 simulate_scenario <- function(scn, dsgn){
   
   ## Remove later
-  # nr=3; scn=scenarios[nr,]; dsgn=sim_design[[scenarios[nr,]$dsgn]]
+  # nr=1; scn=scenarios[nr,]; dsgn=sim_design[[scenarios[nr,]$dsgn]]
   
   filename <- paste0("sim_i", scn$iter, "_n", scn$n, "_p", scn$p, "_beta", scn$beta_max, "_a", scn$a, 
                      "_epsstd", scn$epsstd, "_propnz", scn$prop.nonzero, "_sampthresh", scn$sampthresh, ".rds")

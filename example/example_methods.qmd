@@ -39,7 +39,7 @@ source(here::here("src","functions_aux.R"))
 # --- Initialization
 ncv = 10
 nR  = 2
-propnz = 0.9
+propz = 0.1
 data_mos <- readRDS(here::here("data", "mosaique", "Large_Mariella.rds"))
 data_peptides <- data_mos[,7:ncol(data_mos)]
 colnames(data_peptides) <- paste0("P",1:ncol(data_peptides))
@@ -48,7 +48,7 @@ data_peptides <- apply(as.matrix(data_peptides), 2, as.numeric)
 clin.vars <- c("Age", "Sex", "eGFR")
 
 # Peptide subset selection due to computational feasibility based on max non-zero entries
-ind <- which(apply(data_peptides, 2, assess_nonzeros, prop_nonzero = propnz))
+ind <- which(apply(data_peptides, 2, max_proportionZI, prop_zero = propz))
 data_peptides <- as.matrix(data_peptides[,ind])
 data_mos <- data.frame(cbind(data_mos[,1:6],data_peptides)) %>%
   dplyr::rename("Sex" = Gender)
@@ -163,7 +163,7 @@ p4 <- data.frame("intensity" = to_factor(d[, 10])) %>% ggplot(aes(x = intensity)
 
 ### Algorithmic models
 
-```{r}
+```{r models}
 # CV Predictions
 model <- rep(c("lasso", "ridge", "lasso-ridge", "ridge-lasso", "ridge-garrote", "random forest"), each=2)[-2]
 penalty <- c(rep(c("combined", "component"), 5)[-2], "without tuning", "tuning")
@@ -733,6 +733,8 @@ p3 <- tbl.coef.rgarrote.cp %>%
 #| tbl-cap: "Results of all models"
 tbl_perf %>%
   data.frame() %>%
+  mutate(model=fct_relevel(model, c("lasso", "ridge", "lasso-ridge", "ridge-lasso", "ridge-garrote", "random forest"))) %>%
+  arrange(model) %>%
   mutate_at(3:6, round, digits = 3) %>%
   gt()
 
@@ -741,7 +743,7 @@ list_results <- list("performance" = tbl_perf,
                      "coef"=list_coef,
                      "models"=list_model,
                      "varsel"=list_varsel)
-filename <- paste0("results_mosaique_pnz", propnz, "_nR", nR,"_ncv", ncv,".rds")
+filename <- paste0("results_mosaique_pnz", propz, "_nR", nR,"_ncv", ncv,".rds")
 saveRDS(list_results, here::here("output", "example", filename))
 ```
 

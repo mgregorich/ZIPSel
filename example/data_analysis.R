@@ -57,8 +57,8 @@ perform_CVmethods <- function(i, data.obj, dataset){
   data.obj$pred.ridge.x[(1:n)[folds == i]] <- predict_penreg(obj = fit.ridge.x, newdata = obj.test, model = "ridge")
   data.obj$pred.lridge.ud[(1:n)[folds == i]] <- predict_lridge(obj = fit.lridge.ud, newdata = obj.test)
   data.obj$pred.lridge.x[(1:n)[folds == i]] <- predict_lridge(obj = fit.lridge.x, newdata = obj.test)
-  data.obj$pred.rlasso.ud[(1:n)[folds == i]] <- predict_rlasso(obj = fit.rlasso.ud, newdata = obj.test)
-  data.obj$pred.rlasso.x[(1:n)[folds == i]] <- predict_rlasso(obj = fit.rlasso.x, newdata = obj.test)
+  data.obj$pred.rlasso.ud[(1:n)[folds == i]] <- predict_rlasso(obj = fit.rlasso.ud, newdata = obj.test, split_vars = TRUE)
+  data.obj$pred.rlasso.x[(1:n)[folds == i]] <- predict_rlasso(obj = fit.rlasso.x, newdata = obj.test, split_vars = FALSE)
   data.obj$pred.rgarrote.ud[(1:n)[folds == i]] <- predict_rgarrote(obj = fit.rgarrote.ud, newdata = obj.test)
   data.obj$pred.rgarrote.x[(1:n)[folds == i]] <- predict_rgarrote(obj = fit.rgarrote.x, newdata = obj.test)
   dataset$pred.rf.notune[(1:n)[folds == i]] <- predict(fit.rf.notune,  data = test %>% dplyr::select(-c(y, pred.rf.notune, pred.rf.tune)))$predictions
@@ -88,8 +88,8 @@ extract_varsel <- function(modelcoef){
 
 # ---------- Initialization & Data --------------
 ncv = 10
-nR  = 10
-vec_propnz <-  rev(seq(0.1, 0.9, 0.1))
+nR  = 2
+vec_propz <-  rev(seq(0.1, 0.9, 0.1))
 data_mos <- readRDS(here::here("data", "mosaique", "Large_Mariella.rds"))
 data_allpeptides <- data_mos[,7:ncol(data_mos)]
 colnames(data_allpeptides) <- paste0("P",1:ncol(data_allpeptides))
@@ -107,18 +107,17 @@ data_mos <- data_mos %>%
 
 # Peptide subset selection due to computational feasibility based on max non-zero entries
 list_results <- list()
-for(l in 1:length(vec_propnz)){
-  propnz <- vec_propnz[l]
-  ind <- which(apply(data_allpeptides, 2, assess_nonzeros, prop_nonzero = propnz))
+for(l in 1:length(vec_propz)){
+  propz <- vec_propz[l]
+  ind <- which(apply(data_allpeptides, 2, max_proportionZI, prop_zero = propz))
   data_peptides <- as.matrix(data_allpeptides[,ind])
-  data_mos <- data.frame(cbind(data_mos[,1:6],data_peptides)) 
+  data_mos <- data.frame(cbind(data_mos[,1:6], data_peptides)) 
   
   # Parameter
   n = nrow(data_mos)
   p = ncol(data_peptides)
   folds <- sample(rep(1:ncv, ceiling(n/ncv)))[1:n]
   pflist <- list(c(1,2), c(2,1), c(1,3), c(3,1))
-  
   
   # Data transformation
   x <- data_peptides
@@ -182,9 +181,9 @@ for(l in 1:length(vec_propnz)){
   # Variable selection
   # List of variable selection for models 
   tbl_varsel <- data.frame(matrix(NA, ncol=14, nrow=ncol(data_allpeptides)))
-  colnames(tbl_varsel) <- c("propnz", "all", "included", "lasso", "ridge_ud", "ridge_x", "lridge_ud", "lridge_x",
+  colnames(tbl_varsel) <- c("propz", "all", "included", "lasso", "ridge_ud", "ridge_x", "lridge_ud", "lridge_x",
                             "rlasso_ud", "rlasso_x", "rgarrote_ud", "rgarrote_x", "rf_notune", "rf_tune")
-  tbl_varsel$propnz <- propnz
+  tbl_varsel$propz <- propz
   tbl_varsel$all <- colnames(data_allpeptides)
   tbl_varsel$included <- ifelse(tbl_varsel$all %in% colnames(data_peptides), 1, 0)
   tbl_varsel$lasso <- ifelse(tbl_varsel$all %in% extract_varsel(list_coef$lasso), 1, 0)
@@ -208,12 +207,12 @@ for(l in 1:length(vec_propnz)){
               "MAE"=mean(MAE, na.rm=TRUE), "CS"=mean(CS, na.rm=TRUE)) %>%
     ungroup() %>%
     mutate("df"=c(unlist(lapply(list_model, function(x) x$dfvars)), rep(ncol(data_peptides),2)),
-           "propnz" = propnz) %>%
-    relocate(propnz, .after=penalty)
+           "propz" = propz) %>%
+    relocate(propz, .after=penalty)
   
   tbl_performance <- tbl_performance %>%
-    mutate("propnz"=propnz) %>%
-    relocate(propnz, .after=penalty)
+    mutate("propz"=propz) %>%
+    relocate(propz, .after=penalty)
   
   # Runtime
   mbm <- microbenchmark("lasso" = { b <- perform_penreg(data.obj = data.obj, family = "gaussian", cv = ncv, R = nR, alpha1 = 1, penalty = "combined", split_vars = FALSE)},
@@ -231,7 +230,7 @@ for(l in 1:length(vec_propnz)){
                         )
   mbm <- mbm %>%
     data.frame() %>%
-    mutate(propnz = propnz,
+    mutate(propz = propz,
            model = str_split_fixed(expr, "_", 2)[,1],
            penalty = str_split_fixed(expr, "_", 2)[,2],
            model = ifelse(model %in% "rf", "random forest", model),
@@ -247,7 +246,7 @@ for(l in 1:length(vec_propnz)){
                        "coef" = list_coef,
                        "models" = list_model,
                        "mbm" = mbm)
-  filename <- paste0("results_mosaique_pnz", propnz, "_nR", nR,"_ncv", ncv,".rds")
+  filename <- paste0("results_mosaique_pnz", propz, "_nR", nR,"_ncv", ncv,".rds")
   saveRDS(list_results[[l]], here::here("output", "example", filename))
 }
 

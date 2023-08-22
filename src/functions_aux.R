@@ -7,11 +7,11 @@
 
 # =============================== GENERAL ======================================
 
-assess_nonzeros <- function(vec, prop_nonzero=0.75){
+max_proportionZI <- function(vec, prop_zero=0.75){
   # Input: Vector of values
   # Output: Indicate if vector falls below the non-zero threshold (True/False)
   
-  out <- (sum(vec > 0)/length(vec)) >= prop_nonzero
+  out <- (sum(vec == 0)/length(vec)) <= prop_zero
   return(out)
 }
 
@@ -618,9 +618,9 @@ predict_penreg <- function(obj, newdata, type = "link", model = "ridge"){
 
 perform_lridge <- function(data.obj, family = "gaussian", nlambda = c(10,10), cv = 10, R = 2, alpha1 = 1, alpha2 = 0, 
                            penalty = "combined", pflist = NULL, split_vars = FALSE){
-  
-  # data.obj = data.obj; family = "gaussian"; nlambda = c(10,10); cv = 10; R = 1; alpha1 = 1; alpha2 = 0;
-  # pflist = NULL; penalty = "combined"; split_vars = FALSE
+# 
+#   data.obj = data.obj; family = "gaussian"; nlambda = c(10,10); cv = 10; R = 1; alpha1 = 1; alpha2 = 0;
+#   pflist = NULL; penalty = "combined"; split_vars = FALSE
   
   # Check for misspecifications
   if(all(penalty != c("combined", "component"))){ stop("Penalty must be 'combined' or 'component'.") }
@@ -750,26 +750,24 @@ perform_lridge <- function(data.obj, family = "gaussian", nlambda = c(10,10), cv
     rownames(lambda) <- fit1.lasso$lambda
     
     # (2) Ridge regression with selected variables (continuous and binary part)
-    fit2.ridge <- vector(mode = "list", length = nl1)
-    fit2.ridge[[1]]$df <- rep(NA, ncol(lambda))
     for(i in 2:nl1){
       # Include u and d part of selected vars
       b.lasso <- coef(fit1.lasso)[ ,i]
       nonzero.coefs <- names(b.lasso)[which(b.lasso != 0)]
       nonzero.x <- str_remove_all(nonzero.coefs, "x.")[-1]
       knz <- length(nonzero.x)
-      nonzero.ud <- colnames(varmat)[str_remove_all(colnames(varmat), "u.|d.") %in% nonzero.x]
+      nonzero.ud <- colnames(varmat)[str_remove_all(colnames(varmat), "u.|d.|x.") %in% nonzero.x]
       
       # Ridge model with penalty
       pfvector <- rep(pf, each = knz)
-      fit2.ridge[[i]] <- glmnet(y = y, x = varmat[ , nonzero.ud], alpha = alpha2, nlambda = nl2, 
+      fit2.ridge <- glmnet(y = y, x = varmat[ , nonzero.ud], alpha = alpha2, nlambda = nl2, 
                                 offset = clin_offset, penalty.factor = pfvector)
-      lambda[i, , p] <- fit2.ridge[[i]]$lambda
-      beta[rownames(coef(fit2.ridge[[i]])), (nl2 * (i - 1) + 1):(nl2 * (i - 1) + nl1), p] <- as.matrix(coef(fit2.ridge[[i]]))          
+      lambda[i, , p] <- fit2.ridge$lambda
+      df[i, ,p] <- fit2.ridge$df
+      beta[rownames(coef(fit2.ridge)), (nl2 * (i - 1) + 1):(nl2 * (i - 1) + nl1), p] <- as.matrix(coef(fit2.ridge))          
     } # now we have all nl1*nl2*npf beta vectors  
     
     rownames(beta) <- ifelse(rep(isTRUE(split_vars),dim(varmat)[2]+1), c("(Intercept)", colnames(u), colnames(d)), c("(Intercept)", colnames(x)))
-    df[ , , p] <- matrix(unlist(lapply(fit2.ridge, function(X) X$df)), nrow = nrow(lambda), ncol = ncol(lambda),byrow = TRUE)
   }
   
   ## Return
@@ -828,9 +826,11 @@ predict_lridge <- function(obj, newdata, type = "link"){
 
 
 
-perform_rlasso <- function(data.obj, family = "gaussian", nlambda = c(10, 10), cv = 10, R = 2, alpha1 = 0, alpha2 = 1, penalty = "combined", pflist = NULL, split_vars = FALSE){
+perform_rlasso <- function(data.obj, family = "gaussian", nlambda = c(10, 10), cv = 10, R = 2, 
+                           alpha1 = 0, alpha2 = 1, penalty = "combined", pflist = NULL, split_vars = FALSE){
   
-  # data.obj = data.obj; nlambda=c(11,11); cv=10; R=2; alpha1=0; alpha2=1; family="gaussian"; penalty="component"; pflist=list(c(1,2), c(2,1))
+  # data.obj = data.obj; nlambda=c(11,11); cv=10; R=2; alpha1=0; alpha2=1; family="gaussian";
+  # penalty="component"; pflist=list(c(1,2), c(2,1)); split_vars = TRUE
   
   # Check for misspecifications
   if(all(penalty != c("combined", "component"))){ stop("Penalty must be 'combined' or 'component'.") }
@@ -843,11 +843,12 @@ perform_rlasso <- function(data.obj, family = "gaussian", nlambda = c(10, 10), c
   u <- data.obj[["u"]]
   d <- data.obj[["d"]]
   y <- data.obj[["y"]]  
-  xmat <- as.matrix(x)  
   if(split_vars){
     varmat <- as.matrix(cbind(u, d))  
+    xdmat <- as.matrix(cbind(x, d))  
   }else{
     varmat <- as.matrix(x)  
+    xdmat <- as.matrix(x)  
   }
   if(!is.null(data.obj[["clinical"]])) clinical <- data.frame("y" = y, data.obj[["clinical"]])
   
@@ -873,9 +874,9 @@ perform_rlasso <- function(data.obj, family = "gaussian", nlambda = c(10, 10), c
     for(outer in 1:R){
       folds <- sample(rep(1:cv, ceiling(n/cv)))[1:n]
       for(inner in 1:cv){
-        beta <- matrix(0, ncol(xmat) + 1, nl1 * nl2)
-        x.train <- xmat[(1:n)[folds != inner], ]
-        x.test <- xmat[(1:n)[folds == inner], ]
+        beta <- matrix(0, ncol(xdmat) + 1, nl1 * nl2)
+        xd.train <- xdmat[(1:n)[folds != inner], ]
+        xd.test <- xdmat[(1:n)[folds == inner], ]
         var.train <- varmat[(1:n)[folds != inner], ]
         var.test <- varmat[(1:n)[folds == inner], ]
         y.train <- y[(1:n)[folds != inner]]
@@ -902,16 +903,16 @@ perform_rlasso <- function(data.obj, family = "gaussian", nlambda = c(10, 10), c
           # Penalty
           b.ridge <- c(coef(fit1.ridge)[-1,i])
           if(split_vars){
-            penalty_x <- abs(b.ridge[1:k]) + abs(b.ridge[(k+1):(2*k)])
+            penalty_x <- rep(abs(b.ridge[1:k]) + abs(b.ridge[(k+1):(2*k)]),2)
           }else{penalty_x <- abs(b.ridge)}
           penalty_lasso <- 1 / c(penalty_x)^1
           
           # Lasso: lower.limits ensures positiveness of coeffs
-          fit2.lasso <- glmnet(y = y.train, x = x.train, alpha = alpha2, nlambda = nl2, 
+          fit2.lasso <- glmnet(y = y.train, x = xd.train, alpha = alpha2, nlambda = nl2, 
                                offset = clin_offset_train, penalty.factor = penalty_lasso)
-          b.alasso <- coef(fit2.lasso)
+          b.lasso <- coef(fit2.lasso)
           
-          beta[1:(ncol(xmat) + 1), (nl2 * (i - 1) + 1):(nl2 * (i - 1) + nl1)] <- as.matrix(b.alasso)
+          beta[1:(ncol(xdmat) + 1), (nl2 * (i - 1) + 1):(nl2 * (i - 1) + nl1)] <- as.matrix(b.lasso)
         } # now we have all nl1*nl2 betas               
         
         # validation: compute prediction error
@@ -920,7 +921,7 @@ perform_rlasso <- function(data.obj, family = "gaussian", nlambda = c(10, 10), c
         }else{clin_offset_test <- rep(0, sum(folds==inner))}
         for(i in 1:nl1){
           for(ii in 1:nl2){
-            yhat.test <- cbind(1, x.test) %*% beta[ , nl2 * (i - 1) + ii] + clin_offset_test
+            yhat.test <- cbind(1, xd.test) %*% beta[ , nl2 * (i - 1) + ii] + clin_offset_test
             if(family == "binomial") yhat.test <- plogis(yhat.test)
             prederr[i, ii] <- prederr[i, ii] + mean((y.test - yhat.test)**2)/cv/R
             prederr2[i, ii] <- prederr2[i, ii] + ((mean((y.test - yhat.test)**2))**2)/cv/R
@@ -950,8 +951,8 @@ perform_rlasso <- function(data.obj, family = "gaussian", nlambda = c(10, 10), c
     clin_offset <- apply(clinical %>% dplyr::select(-y), 2, to_numeric) %*% clin_offset_coefs
   }
   
-  beta <- array(0, c(ncol(xmat) + 1, nl1 * nl2, npf))
-  rownames(beta) <- c("(Intercept)", colnames(xmat))
+  beta <- array(0, c(ncol(xdmat) + 1, nl1 * nl2, npf))
+  rownames(beta) <- c("(Intercept)", colnames(xdmat))
   lambda <- df <- array(NA, c(nl1, nl2, npf))
   for(p in 1:npf){
     # Penalty
@@ -963,22 +964,19 @@ perform_rlasso <- function(data.obj, family = "gaussian", nlambda = c(10, 10), c
     rownames(lambda) <- fit1.ridge$lambda
     
     # (2) Positive lasso 
-    fit2.alasso <- vector(mode = "list", length = nl1)
-    fit2.alasso[[1]]$df <- rep(NA, ncol(lambda))
     for(i in 1:nl1){
       # Penalty
       b.ridge <- c(coef(fit1.ridge)[-1, i])
       if(split_vars){
-        penalty_x <- abs(b.ridge[1:k]) + abs(b.ridge[(k+1):(2*k)])
+        penalty_x <- rep(abs(b.ridge[1:k]) + abs(b.ridge[(k+1):(2*k)]),2)
       }else{penalty_x <- abs(b.ridge)}
       penalty_lasso <- 1 / c(penalty_x)^1
       
-      fit2.alasso[[i]] <- glmnet(y = y, x = xmat, family = family, alpha = alpha2, nlambda = nl2, offset = clin_offset, penalty.factor = penalty_lasso)
-      lambda[i, , p] <- fit2.alasso[[i]]$lambda
-      beta[1:(ncol(xmat) + 1),(nl2 * (i - 1) + 1):(nl2 * (i - 1) + nl1), p] <- as.matrix(coef(fit2.alasso[[i]]))
+      fit2.lasso <- glmnet(y = y, x = xdmat, family = family, alpha = alpha2, nlambda = nl2, offset = clin_offset, penalty.factor = penalty_lasso)
+      lambda[i, , p] <- fit2.lasso$lambda
+      df[i, ,p] <- fit2.lasso$df
+      beta[1:(ncol(xdmat) + 1),(nl2 * (i - 1) + 1):(nl2 * (i - 1) + nl1), p] <- as.matrix(coef(fit2.lasso))
     } # now we have all nl1*nl2*npf beta vectors               
-    rownames(beta) <- c("(Intercept)", colnames(x))
-    df[,, p] <- matrix(unlist(lapply(fit2.alasso, function(X) X$df)), nrow = nrow(lambda), ncol = ncol(lambda), byrow = TRUE)
   }
   ## Return
   # lasso and ridge lambda
@@ -988,7 +986,7 @@ perform_rlasso <- function(data.obj, family = "gaussian", nlambda = c(10, 10), c
 
   # Coeffs for best lambda
   coeffs <- beta[, nl2 * (index[1] - 1) + index[2], index[3]]
-  names(coeffs) <- c("(Intercept)", colnames(x))
+  names(coeffs) <- c("(Intercept)", colnames(xdmat))
   
   # component-specific penalty factor
   pf.min <- pflist[[index[3]]]
@@ -996,24 +994,30 @@ perform_rlasso <- function(data.obj, family = "gaussian", nlambda = c(10, 10), c
   if(split_vars){names(pf.min) <- c("pf U", "pf D")}
   
   # fitted values
-  fitted.values <- cbind(1, xmat) %*% beta[, nl2 * (index[1] - 1) + index[2], index[3]] + clin_offset
+  fitted.values <- cbind(1, xdmat) %*% beta[, nl2 * (index[1] - 1) + index[2], index[3]] + clin_offset
   
-  res<-list(call = match.call(), family = family, lambda = lambda, coefficients = coeffs, glmnet.fit1.ridge = fit1.ridge, glmnet.fit.alasso = fit2.alasso, 
+  res <- list(call = match.call(), family = family, lambda = lambda, coefficients = coeffs, glmnet.fit1.ridge = fit1.ridge, glmnet.fit.alasso = fit2.lasso, 
             k = k, kclin = kclin, df = df.final,  dfvars = df.final, cv.pred.err = prederror,
             cv.rsquare = rsquare_pf, se.pred.err = se.prederror, 
-            fit = list(xmat = xmat, lambda = lambda, lambda.min = lambda.min, pf.min = pf.min,
+            fit = list(xmat = xdmat, lambda = lambda, lambda.min = lambda.min, pf.min = pf.min,
                      clin_offset = clin_offset, clin_offset_coefs = clin_offset_coefs,
                      coefficients = coeffs, beta = beta, # coefs ... coefs oft best lambda combination, beta.. all coefs for all lambdas
                      index.lambda.min = c(index[1], index[2]), 
                      fitted.values = fitted.values))
-  attr(res,"class")<-"ridge-lasso"
-  attr(res,"penalty")<- penalty
+  attr(res,"class") <- "ridge-lasso"
+  attr(res,"penalty") <- penalty
   return(res)
 }
 
-predict_rlasso <- function(obj, newdata, type = "link"){
-  x<-newdata[["x"]]
-  xmat <- as.matrix(x)  
+predict_rlasso <- function(obj, newdata, type = "link", split_vars = TRUE){
+  x <- newdata[["x"]]
+  d <- newdata[["d"]]
+  
+  if(split_vars){
+    xdmat <- as.matrix(cbind(x, d))  
+  }else{
+    xdmat <- as.matrix(x)  
+  }
   
   if(!is.null(newdata[["clinical"]])){
     clinical <- data.frame(newdata[["clinical"]])
@@ -1021,9 +1025,9 @@ predict_rlasso <- function(obj, newdata, type = "link"){
   }else{
     new_offset <- rep(0, nrow(x))
   }
-  x<-cbind(1, xmat[, names(obj$fit$coefficients[obj$fit$coefficients != 0])[-1]])
+  X <- cbind(1, xdmat[, names(obj$fit$coefficients[obj$fit$coefficients != 0])[-1]])
   beta <- obj$fit$coefficients[obj$fit$coefficients != 0]
-  linpred <- x %*% beta + new_offset
+  linpred <- X %*% beta + new_offset
   
   if(type == "response" & obj$family == "binomial") linpred <- plogis(linpred)
   return(linpred)
@@ -1036,7 +1040,7 @@ predict_rlasso <- function(obj, newdata, type = "link"){
 perform_rgarrote <- function(data.obj, family = "gaussian", nlambda = c(10,10), cv = 10, R = 2, alpha1 = 0, penalty="combined", 
                              pflist=NULL, split_vars = FALSE){
   # data.obj=data.obj; family="gaussian"; nlambda=c(10,10); cv=10; R=2; alpha1=0; alpha2=1; penalty="component"; pflist=list(c(1,2), c(2,1))
-  # data.obj=data.obj; family="gaussian"; nlambda=c(10,10); cv=10; R=2; alpha1=1; alpha2=1; penalty="combined";
+  # data.obj=data.obj; family="gaussian"; nlambda=c(10,10); cv=10; R=2; alpha1=0; alpha2=1; penalty="combined";
   # pflist=NULL; split_vars = FALSE
   
   # Check for misspecifications
@@ -1052,7 +1056,7 @@ perform_rgarrote <- function(data.obj, family = "gaussian", nlambda = c(10,10), 
   u <- data.obj[["u"]]
   d <- data.obj[["d"]]
   y <- data.obj[["y"]]
-  if(split_vars | alpha1 == 0)  varmat <- as.matrix(cbind(u, d)) else varmat <- as.matrix(x)  
+  if(split_vars | (alpha1 == 0 & split_vars))  varmat <- as.matrix(cbind(u, d)) else varmat <- as.matrix(x)  
   if(!is.null(data.obj[["clinical"]])) clinical <- data.frame("y" = y, data.obj[["clinical"]])
   
   n <- nrow(u)
