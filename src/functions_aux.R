@@ -54,6 +54,19 @@ plot_calibration <- function(pred, obs, fig.title = ""){
 
 # ========================== MODELLING ============================================================
 
+
+generate_simdesign <- function(p, xmean=0, xstd=0.5, ngroups=4){
+  # Groupwise Hub correlation design filled with toeplitz
+  hub_cormat <- simcor.H(k = ngroups, size = rep(p/ngroups,ngroups),rho = rhomat[[1]], power = 1, epsilon = 0.075, eidim = 2)
+  if(!matrixcalc::is.positive.definite(hub_cormat)) hub_cormat <- nearPD(hub_cormat, base.matrix = TRUE, keepDiag = TRUE)$mat
+  
+  # Generate simdata design
+  distlist <- rep(list(partial(function(x, meanlog, sdlog) qlnorm(x, meanlog = meanlog, sdlog = sdlog), meanlog = xmean, sdlog = xstd)), nrow(hub_cormat)) 
+  dsgn <- simdata::simdesign_norta(cor_target_final = hub_cormat, dist = distlist, transform_initial = data.frame,
+                                   names_final = paste0("V",1:nrow(hub_cormat)), seed_initial = 1) 
+  return(dsgn)
+}
+
 adjusted_R2 <- function(pred, obs, N, k){
   r2 <- cor(pred,obs, use="pairwise.complete.obs")^2
   r2 <- 1-(((1-r2)*(N-1))/(N-k-1))
@@ -620,7 +633,7 @@ perform_lridge <- function(data.obj, family = "gaussian", nlambda = c(10,10), cv
                            penalty = "combined", pflist = NULL, split_vars = FALSE){
 # 
 #   data.obj = data.obj; family = "gaussian"; nlambda = c(10,10); cv = 10; R = 1; alpha1 = 1; alpha2 = 0;
-#   pflist = NULL; penalty = "combined"; split_vars = FALSE
+#   pflist = NULL; penalty = "combined"; split_vars = TRUE
   
   # Check for misspecifications
   if(all(penalty != c("combined", "component"))){ stop("Penalty must be 'combined' or 'component'.") }
@@ -830,13 +843,13 @@ perform_rlasso <- function(data.obj, family = "gaussian", nlambda = c(10, 10), c
                            alpha1 = 0, alpha2 = 1, penalty = "combined", pflist = NULL, split_vars = FALSE){
   
   # data.obj = data.obj; nlambda=c(11,11); cv=10; R=2; alpha1=0; alpha2=1; family="gaussian";
-  # penalty="component"; pflist=list(c(1,2), c(2,1)); split_vars = TRUE
-  
+  # penalty="combined"; pflist=list(c(1,2), c(2,1)); split_vars = TRUE
+
   # Check for misspecifications
   if(all(penalty != c("combined", "component"))){ stop("Penalty must be 'combined' or 'component'.") }
   if(is.null(pflist) & penalty == "component"){ stop("pflist must be specified if penalty='component'!") }
   if(!split_vars & penalty=="component"){ stop("Component-specific penalty only valid for split variable.") }
-   if(penalty == "combined" & split_vars){ pflist <- list(c(1, 1))
+  if(penalty == "combined" & split_vars){ pflist <- list(c(1, 1))
   }else if(penalty == "combined" & !split_vars){pflist <- list(c(1))}
   
   x <- data.obj[["x"]]
@@ -982,7 +995,7 @@ perform_rlasso <- function(data.obj, family = "gaussian", nlambda = c(10, 10), c
   # lasso and ridge lambda
   lambda.min <- c(as.numeric(rownames(lambda)[index[1]]), as.numeric(lambda[index[1], index[2], index[3]]))
   names(lambda.min)<-c("ridge","lasso")
-  df.final <- df[index[1],index[2],index[3]]
+  df.final <- ifelse(split_vars, df[index[1],index[2],index[3]]/2, df[index[1],index[2],index[3]])
 
   # Coeffs for best lambda
   coeffs <- beta[, nl2 * (index[1] - 1) + index[2], index[3]]

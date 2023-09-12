@@ -87,9 +87,6 @@ extract_varsel <- function(modelcoef){
 
 
 # ---------- Initialization & Data --------------
-ncv = 10
-nR  = 2
-vec_propz <-  rev(seq(0.1, 0.9, 0.1))
 data_mos <- readRDS(here::here("data", "mosaique", "Large_Mariella.rds"))
 data_allpeptides <- data_mos[,7:ncol(data_mos)]
 colnames(data_allpeptides) <- paste0("P",1:ncol(data_allpeptides))
@@ -99,11 +96,17 @@ clin.vars <- c("Age", "Sex", "eGFR")
 
 # Data preparation
 data_mos <- data_mos %>%
-    dplyr::rename("Sex" = Gender) %>%
-    mutate(Sex = to_factor(ifelse(Sex %in% "female", 1, 0)),
-           Age = to_numeric(Age),
-           eGFR = to_numeric(eGFR),
-           log2eGFR = log(eGFR, 2))
+  dplyr::rename("Sex" = Gender) %>%
+  mutate(Sex = to_factor(ifelse(Sex %in% "female", 1, 0)),
+         Age = to_numeric(Age),
+         eGFR = to_numeric(eGFR),
+         log2eGFR = log(eGFR, 2))
+
+
+ncv = 10
+nR  = 10
+vec_propz <-  rev(seq(0.1, 0.9, 0.1))
+
 
 # Peptide subset selection due to computational feasibility based on max non-zero entries
 list_results <- list()
@@ -114,7 +117,7 @@ for(l in 1:length(vec_propz)){
   data_mos <- data.frame(cbind(data_mos[,1:6], data_peptides)) 
   
   # Parameter
-  n = nrow(data_mos)
+  n = nrow(data_peptides)
   p = ncol(data_peptides)
   folds <- sample(rep(1:ncv, ceiling(n/ncv)))[1:n]
   pflist <- list(c(1,2), c(2,1), c(1,3), c(3,1))
@@ -146,7 +149,7 @@ for(l in 1:length(vec_propz)){
   # ----------- CV Predictions --------------------
   
   names_models <- rep(c("lasso", "ridge", "lasso-ridge", "ridge-lasso", "ridge-garrote", "random forest"), each=2)[-2]
-  names_penalty <- c(rep(c("ud", "x"), 5)[-1], "without tuning", " with tuning")
+  names_penalty <- c(rep(c("ud", "x"), 5)[-1], "without tuning", "with tuning")
   
   plan(multisession, workers=10)
   tbl_performance <- future_lapply(1:ncv, function(x) perform_CVmethods(x, data.obj = data.obj, dataset = dataset), future.seed=TRUE)
@@ -250,7 +253,7 @@ for(l in 1:length(vec_propz)){
   saveRDS(list_results[[l]], here::here("output", "example", filename))
 }
 
-# Concatenate results across proportions of non-zero values
+# --- Concatenate results across proportions of non-zero values ----
 res.files <- list.files(here::here("output", "example"), pattern = "results_")
 list_results <- lapply(res.files, function(x) readRDS(here::here("output", "example", x)))
 tbl_performance <- do.call(rbind, lapply(list_results, function(x) x$performance))

@@ -5,62 +5,63 @@
 #' ==============================================================================
 
 
-# Parameter
+# --- Parameter
 set.seed(666)
-iter = 5
+iter <- 5
+regenerate_simdata <- FALSE
+
 n <- c(100,200,400)         # sample size
 p <- c(200,400)             # number of candidate predictors
 rhomat <- list(rbind(c(.8,.2), c(.8,.2), c(.8,.2), c(.4,.2)))   # correlation ranges in each group
-beta_max <- 5               # maximum coefficient
+beta_max <- 5                              # maximum coefficient
 a <- c(0.2165, 0.28, 1)                    # medium balance of U and D influence on y
-epsstd <- c(5, 10)
+epsstd <- c(1, 2)
 prop.nonzero <- 0.5         
 sampthresh <- 0.05
-scenario <- "D"
+scenario <- c("A", "B")
 
-# Scenario matrix
+tbl_simdata <- data.frame("p" = p, "dsgns" = paste0("dsgn_", 1:length(p)))
+
+# --- Scenario matrix
 scenarios <- expand.grid(
   iter = iter,
+  scenario = scenario,
   n = n,
   p = p,
-  scenario = scenario,
   rhomat = rhomat,
   beta_max = beta_max,
   a = a,
   epsstd = epsstd,
   prop.nonzero = prop.nonzero,
-  sampthresh = sampthresh) 
+  sampthresh = sampthresh) %>%
+  merge(., tbl_simdata, by=c("p")) %>%
+  relocate(p, .after=n)  %>% 
+  mutate(epsstd = ifelse(scenario == "A" & p == 200 & a == .2165, epsstd * 5.5, epsstd),
+         epsstd = ifelse(scenario == "A" & p == 200 & a == .28, epsstd * 6.5, epsstd),
+         epsstd = ifelse(scenario == "A" & p == 200 & a == 1, epsstd * 20.25, epsstd),
+         epsstd = ifelse(scenario == "A" & p == 400 & a == .2165, epsstd * 10, epsstd),
+         epsstd = ifelse(scenario == "A" & p == 400 & a == .28, epsstd * 12, epsstd),
+         epsstd = ifelse(scenario == "A" & p == 400 & a == 1, epsstd * 40, epsstd),
+         epsstd = ifelse(scenario == "B" & p == 200 & a == .2165, epsstd * 5.525, epsstd),
+         epsstd = ifelse(scenario == "B" & p == 200 & a == .28, epsstd * 6.1, epsstd),
+         epsstd = ifelse(scenario == "B" & p == 200 & a == 1, epsstd * 15, epsstd),
+         epsstd = ifelse(scenario == "B" & p == 400 & a == .2165, epsstd * 4.725, epsstd),
+         epsstd = ifelse(scenario == "B" & p == 400 & a == .28, epsstd * 5.35, epsstd),
+         epsstd = ifelse(scenario == "B" & p == 400 & a == 1, epsstd * 15, epsstd),
+         beta_max = ifelse(scenario %in% "A", beta_max*0.4, beta_max)) %>% 
+  arrange(p, a, epsstd)
 
 
-
-# Data simulation design
-xmean = 0
-xstd = 0.5
-data_design <- scenarios %>% 
-  data.frame() %>%
-  dplyr::select(p) %>%
-  filter(!duplicated(p))
-list_design <- list()
-data_design$dsgn <- NA
-for(i in 1: nrow(data_design)){
-  print(paste0("Sim design: ",i, "/", nrow(data_design)))
-  # Groupwise Hub correlation design filled with toeplitz
-  hub_cormat <- simcor.H(k = 4, size = rep(data_design[i,]$p/4,4),
-                         rho = rhomat[[1]], power = 1, epsilon = 0.075, eidim = 2)
-  if(!matrixcalc::is.positive.definite(hub_cormat)) hub_cormat <- nearPD(hub_cormat, base.matrix = TRUE, keepDiag = TRUE)$mat
-  
-  # Data design
-  distlist <- rep(list(partial(function(x, meanlog, sdlog) qlnorm(x, meanlog = meanlog, sdlog = sdlog),
-                               meanlog = xmean, sdlog = xstd)), nrow(hub_cormat)) 
-  dsgn = simdata::simdesign_norta(cor_target_final = hub_cormat, dist = distlist, 
-                                  transform_initial = data.frame,
-                                  names_final = paste0("V",1:nrow(hub_cormat)), seed_initial = 1) 
-  list_design[[i]] <- dsgn
-  data_design[i,]$dsgn <- i
+# --- Data simulation design
+if(regenerate_simdata){
+  plan(multisession, workers = length(p))
+  list_design <- future_lapply(1:length(p), function(x) generate_simdesign(p = p[x]), future.seed = TRUE)
+  names(list_design) <- paste0("dsgn_", 1:length(p))
+  plan(sequential)  
+}else{
+  list_design <- readRDS(here::here("src", "scenario_setup.rds"))$list_design
 }
 
-scenarios <- merge(scenarios, data_design, by=c("p")) %>%
-  relocate(p, .after=n)
 setup <- list("scenarios"=scenarios, "list_design"=list_design)
 saveRDS(setup, here::here("src", "scenario_setup.rds"))
 

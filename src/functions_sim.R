@@ -16,7 +16,7 @@ simulate_scenario <- function(scn, dsgn){
                      "_epsstd", scn$epsstd, "_propnz", scn$prop.nonzero, "_sampthresh", scn$sampthresh, ".rds")
 
   # Generate large validation dataset
-  data.val <- data_generation(dsgn = dsgn, n = 100000, p=scn$p, beta_max = scn$beta_max, a = scn$a, epsstd = scn$epsstd, 
+  data.val <- data_generation(dsgn = dsgn, scenario = scn$scenario, n = 100000, p=scn$p, beta_max = scn$beta_max, a = scn$a, epsstd = scn$epsstd, 
                               prop.nonzero = scn$prop.nonzero, sampthresh = scn$sampthresh)
   data.val <- generate_dataobj(y = data.val$data_ana$y, x = data.val$data_ana$x, clinical = NULL)
   
@@ -41,10 +41,10 @@ simulate_scenario <- function(scn, dsgn){
 
 
 # ============================ Data generation =================================
-data_generation <- function(dsgn, n, p, beta_max, a, epsstd, prop.nonzero, sampthresh){
+data_generation <- function(dsgn, scenario, n, p, beta_max, a, epsstd, prop.nonzero, sampthresh){
   
   # # Remove later (parameter input for function)
-  # dsgn=dsgn; n=100000; p=scn$p; ngroups=scn$ngroups; a=scn$a; epsstd=scn$epsstd;
+  # dsgn=dsgn; scenario = scn$scenario; n=100000; p=scn$p; ngroups=scn$ngroups; a=scn$a; epsstd=scn$epsstd;
   # prop.nonzero=scn$prop.nonzero; sampthresh=scn$sampthresh; beta_max=scn$beta_max
   
   # Parameter
@@ -62,16 +62,33 @@ data_generation <- function(dsgn, n, p, beta_max, a, epsstd, prop.nonzero, sampt
   # Extract hubs and indices of true predictors (scenario D)
   groupsize <- rep(p/ngroups, ngroups)
   hubindex <- cumsum(groupsize) - groupsize + 1 # identify index of hub
-  nelem <- c(5,5,5,5)  # number of true predictors in each group
   groupindex <- cbind(hubindex, hubindex + groupsize - 1)
-  truepredindex <- c(sapply(1:ngroups, function(x) seq(groupindex[x,1], groupindex[x,2], 5)[1:nelem[x]]))
-  ptrue <- length(truepredindex)
   
-  # Generate coeffs and error 
-  beta_X <- beta_D <- rep(0, p)
-  beta_X[truepredindex] <- c(sapply(nelem, function(x) rev(seq(0, beta_max, length.out = x+1)[-1])))
-  beta_D[truepredindex] <-  c(sapply(nelem, function(x) sample(seq(0, beta_max, length.out = x+1)[-1], x)))
   
+  if(scenario %in% "A"){
+    # Scenario A
+    nelem <- c(groupsize[1], 0, 0, 0)
+    truepredindex <- 1:groupsize[1]
+    ptrue <- length(truepredindex)    
+    
+    # Generate coeffs and error 
+    beta_X <- beta_D <- rep(0, p)
+    beta_X[truepredindex] <- rev(seq(0, beta_max, length.out = ptrue+1)[-1])
+    beta_D[truepredindex] <-  sample(seq(0, beta_max, length.out = ptrue+1)[-1])  
+  }else if(scenario %in% "B"){
+    # Scenario B
+    nelem <- c(5, 5, 5, 5)  # number of true predictors in each group
+    truepredindex <- c(sapply(1:ngroups, function(x) seq(groupindex[x,1], groupindex[x,2], 5)[1:nelem[x]]))
+    ptrue <- length(truepredindex)
+    
+    # Generate coeffs and error 
+    beta_X <- beta_D <- rep(0, p)
+    beta_X[truepredindex] <- c(sapply(nelem, function(x) rev(seq(0, beta_max, length.out = x+1)[-1])))
+    beta_D[truepredindex] <-  c(sapply(nelem, function(x) sample(seq(0, beta_max, length.out = x+1)[-1], x)))    
+  }else{
+    stop("Scenario must be 'A' or 'B'")
+  }
+
   # Generate outcome: a controls influence of X and D components
   eps <- rnorm(n, mean = 0, sd = epsstd)
   y <- c(a * X %*% beta_X + (1-a) * D %*% beta_D  + eps)
@@ -156,8 +173,9 @@ data_analysis <- function(df, data.val, n, p, ncv=10, nR=2, nlams=10, pflist=lis
                                   penalty = "combined", split_vars = TRUE)
   data.val$pred.rlasso.cb <- predict_rlasso(obj = fit.rlasso.cb, newdata = data.val)
   tbl_perf[5, 3:7] <- eval_performance(pred = data.val$pred.rlasso.cb, obs = data.val$y)
-  tbl_coef$beta_rlasso_cb_x <- fit.rlasso.cb$coefficients[-1]
-
+  tbl_coef$beta_rlasso_cb_u <- fit.rlasso.cb$coefficients[2:(p+1)]
+  tbl_coef$beta_rlasso_cb_d <- fit.rlasso.cb$coefficients[(p+2):(2*p+1)]
+  
   # --- Ridge-garrote
   fit.rgarrote.cb <- perform_rgarrote(data.obj, family = "gaussian", cv = ncv, R = nR, nlambda = rep(nlams, 2),
                                       penalty = "combined", alpha1 = 0, split_vars = TRUE)

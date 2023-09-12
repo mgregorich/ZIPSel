@@ -19,26 +19,31 @@ setup <- readRDS(here::here("src", "scenario_setup.rds"))
 scenarios <- setup[[1]]
 sim_design <- setup[[2]]
 
-scenarios$iter <- 5
-scenarios$epsstd <- ifelse(scenarios$epsstd==3, 5, 10)
 
-# --- Data generation
-nr=3; scn=scenarios[nr,]; dsgn=sim_design[[scenarios[nr,]$dsgn]]
+# --- Determine optimal residual variance to achieve R2: 0.2 and 0.5
+scenarios <- scenarios %>% 
+  mutate(epsstd = ifelse(scenario == "A" & p == 200 & a == .2165, epsstd * 5.5, epsstd),
+         epsstd = ifelse(scenario == "A" & p == 200 & a == .28, epsstd * 6.5, epsstd),
+         epsstd = ifelse(scenario == "A" & p == 200 & a == 1, epsstd * 20.25, epsstd),
+         epsstd = ifelse(scenario == "A" & p == 400 & a == .2165, epsstd * 10, epsstd),
+         epsstd = ifelse(scenario == "A" & p == 400 & a == .28, epsstd * 12, epsstd),
+         epsstd = ifelse(scenario == "A" & p == 400 & a == 1, epsstd * 40, epsstd)) %>% 
+  arrange(p, a, epsstd) %>%
+  filter(scenario %in% "A")
+scenarios$R2 <- NA
+for(i in 1: nrow(scenarios)){
+  print(i)
+  scn = scenarios[i,]
+  dsgn = sim_design[[scenarios[i,]$dsgn]]
+  data.val <- data_generation(dsgn = dsgn, scenario = scn$scenario, n = 100000, p=scn$p, beta_max = scn$beta_max, a = scn$a, epsstd = scn$epsstd, 
+                              prop.nonzero = scn$prop.nonzero, sampthresh = scn$sampthresh)
+  
+  # R2
+  y_noisy <- data.val$data_gen$y
+  y_true <- y_noisy - data.val$data_gen$eps
+  SST <- sum((y_noisy - mean(y_noisy))^2)
+  SSE <- sum((y_true-y_noisy)^2)
+  R2 <- 1- (SSE/SST)
+  scenarios[i,]$R2 <- R2
+}
 
-data.val <- data_generation(dsgn = dsgn, n = 100000, p=scn$p, beta_max = scn$beta_max, a = scn$a, epsstd = scn$epsstd, 
-                            prop.nonzero = scn$prop.nonzero, sampthresh = scn$sampthresh)
-data.val <- generate_dataobj(y = data.val$data_ana$y, x = data.val$data_ana$x, clinical = NULL)
-
-
-# --- Oracle
-X <- cbind(data.obj$u, data.obj$d)
-beta_true <- c(df$true_coef$beta_X, df$true_coef$beta_D)
-true_pred <- X[,which(beta_true!=0)]
-fit.oracle <- lm(df$data_ana$y~true_pred)
-beta_oracle <- rep(0, ncol(X))
-beta_oracle[which(beta_true!=0)] <- coef(fit.oracle)[-1]
-beta_oracle[is.na(beta_oracle)] <- 0 
-data.val$pred.oracle <-  fit.oracle$coefficients[1] + c(cbind(data.val$u, data.val$d) %*% beta_oracle) # intercept!!!!
-tbl_perf[1, 3:7] <- eval_performance(pred = data.val$pred.oracle, obs = data.val$y)
-tbl_coef$beta_oracle_u <- beta_oracle[1:(p)]
-tbl_coef$beta_oracle_d <- beta_oracle[(p+1):(2*p)]

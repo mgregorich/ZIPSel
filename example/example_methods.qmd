@@ -37,9 +37,11 @@ source(here::here("src","functions_aux.R"))
 
 ```{r initialization}
 # --- Initialization
+set.seed(12345)
+
 ncv = 10
 nR  = 2
-propz = 0.1
+propz = 1
 data_mos <- readRDS(here::here("data", "mosaique", "Large_Mariella.rds"))
 data_peptides <- data_mos[,7:ncol(data_mos)]
 colnames(data_peptides) <- paste0("P",1:ncol(data_peptides))
@@ -75,8 +77,8 @@ colnames(d) <- paste0("d.", colnames(d))
 utmp <- apply(data_peptides, 2, function(x) ifelse(x == 0, 0, log2(x)))
 u <- apply(utmp, 2, function(x) ifelse(x == 0, mean(x[x > 0]), x))
 colnames(u) <- paste0("u.", colnames(u))
-global_min <- min(data_peptides[data_peptides > 0])
-ximp <- apply(data_peptides, 2, function(x) log2(ifelse(x == 0, global_min*(1/2), x)))
+global_min <- min(log2(data_peptides[data_peptides > 0]))
+ximp <- apply(data_peptides, 2, function(x) ifelse(x == 0, global_min*(1/2), log2(x)))
 c <- data.frame("age" = data_mos$Age, "sex" = data_mos$Sex)
 
 # Data object for models
@@ -113,8 +115,8 @@ p1 <- data_mos %>%
   mutate("P" = 1:n()) %>%
   ggplot(aes(x = P, y = value)) +
   geom_line() +
-  geom_vline(xintercept=1333, col="red", linetype="dashed")+
-  geom_hline(yintercept=0.9, col="red", linetype="dashed")+
+#  geom_vline(xintercept=1333, col="red", linetype="dashed")+
+#  geom_hline(yintercept=0.9, col="red", linetype="dashed")+
   ggtitle("Data from Mosaiques Diagnostics") +
   scale_x_continuous("Index of variable") +
   scale_y_continuous("Proportion of zero-inflation") +
@@ -136,7 +138,7 @@ p2 <- ggplot(data_sim, aes(x = P, y = value)) +
   theme(plot.title = element_text(hjust = 0.5))
 
 p_together <- p1 + p2 + plot_annotation(tag_levels = 'A')
-ggsave(file = here::here("output","fig_dist_zi.tiff"), plot = p_together,
+ggsave(file = here::here("output", "example","fig_dist_zi.tiff"), plot = p_together,
        width = 2.25*100, height = 1*100, units = "mm", dpi = 350, compression = "lzw")
 ```
 
@@ -145,16 +147,53 @@ ggsave(file = here::here("output","fig_dist_zi.tiff"), plot = p_together,
 ```{r}
 #| label: fig-example
 #| fig-cap: "Example of a single peptide from the MOsaique dataset displaying the effects of the data transformation and the data split into the continous U and the binary component D. Original data is the only panel without the log2-transformation."
-p1 <- data.frame("intensity" = x[, 10]) %>% ggplot(aes(x = intensity)) + geom_histogram(col = "black", fill = "grey89", bins = 30) + 
-  theme_light() + ggtitle("Original data X")
-p2 <- data.frame("intensity" = ximp[, 10]) %>% ggplot(aes(x = intensity)) + geom_histogram(col = "black", fill = "grey89", bins = 30) + 
-  theme_light() + ggtitle("Transformed data X")
-p3 <- data.frame("intensity" = u[, 10]) %>% ggplot(aes(x = intensity)) + geom_histogram(col = "black", fill = "grey89", bins = 30) + 
-  theme_light() + ggtitle("Continuous component U")
-p4 <- data.frame("intensity" = to_factor(d[, 10])) %>% ggplot(aes(x = intensity)) + geom_bar(col = "black", fill = "grey89") + 
-  theme_light()+ ggtitle("Binary component D")
+ind = 55 # propz=0.5
+paste0("Proportion of zero-inflation = ", round(sum(x[, ind]==0)/length(x[,ind])*100,2), "%")
+p1 <- data.frame("intensity" = x[, ind]) %>% 
+  ggplot(aes(x = intensity)) + 
+  geom_histogram(col = "black", fill = "grey89", bins = 30) + 
+  scale_x_continuous("Intensity") +
+  scale_y_continuous("Count") +
+  theme_light() + 
+  theme(plot.title = element_text(hjust=0.5)) +
+  ggtitle("Original data")
+p2 <- data.frame("intensity" = ximp[, ind]) %>% 
+  ggplot(aes(x = intensity)) + 
+  geom_histogram(col = "black", fill = "grey89", bins = 30) +
+  scale_x_continuous("Intensity") +
+  scale_y_continuous("Count") +
+  theme_light() + 
+  theme(plot.title = element_text(hjust=0.5)) +
+  ggtitle("Transformed data X")
+p3 <- data.frame("intensity" = u[, ind]) %>%
+  ggplot(aes(x = intensity)) + 
+  geom_histogram(col = "black", fill = "grey89", bins = 30) + 
+  scale_x_continuous("Intensity") +
+  scale_y_continuous("Count") +
+  theme_light() + 
+  theme(plot.title = element_text(hjust=0.5)) +
+  ggtitle("Continuous component U")
+p4 <- data.frame("intensity" = to_factor(d[, ind])) %>% 
+  ggplot(aes(x = intensity)) + 
+  geom_bar(col = "black", fill = "grey89") + 
+  scale_x_discrete("Intensity > 0") +
+  scale_y_continuous("Count") +
+  theme_light()+
+  theme(plot.title = element_text(hjust=0.5)) +
+  ggtitle("Binary component D")
 
-(p1 + p2 ) / ( p3 + p4 ) + plot_annotation(tag_levels = list(c('(A)', '(B)', '(C1)', '(C2)')))
+p_all <- (p1 + p2 ) / ( p3 + p4 ) + plot_annotation(tag_levels = list(c('(A)', '(B)', '(C1)', '(C2)')))
+ggsave(file = here::here("output", "example","fig_dist_all.tiff"), plot=p_all,
+       width = 1.25*80, height = 0.75*80, units = "mm", dpi = 350, compression = "lzw")
+
+ggsave(file = here::here("output", "example","fig_dist_A.tiff"), plot = p1,
+       width = 1.25*80, height = 0.75*80, units = "mm", dpi = 350, compression = "lzw")
+ggsave(file = here::here("output","example","fig_dist_B.tiff"), plot = p2,
+       width = 1.25*80, height = 0.75*80, units = "mm", dpi = 350, compression = "lzw")
+ggsave(file = here::here("output","example","fig_dist_C1.tiff"), plot = p3,
+       width = 1.25*80, height = 0.75*80, units = "mm", dpi = 350, compression = "lzw")
+ggsave(file = here::here("output","example","fig_dist_C2.tiff"), plot = p4,
+       width = 1.25*80, height = 0.75*80, units = "mm", dpi = 350, compression = "lzw")
 ```
 
 # Methods
