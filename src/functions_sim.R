@@ -22,7 +22,7 @@ simulate_scenario <- function(scn, dsgn){
   
   # Run replications
   scn_res <-  lapply(1:scn$iter, function(x){
-    data_iter <- data_generation(dsgn = dsgn, n = scn$n, p = scn$p, beta_max = scn$beta_max, a = scn$a, epsstd = scn$epsstd, 
+    data_iter <- data_generation(dsgn = dsgn, scenario = scn$scenario, n = scn$n, p = scn$p, beta_max = scn$beta_max, a = scn$a, epsstd = scn$epsstd, 
                                  prop.nonzero=scn$prop.nonzero, sampthresh=scn$sampthresh)
     res_iter <-  data_analysis(df = data_iter, data.val = data.val, n = scn$n, p = scn$p, 
                                ncv = 10, nR = 2, nlams = 10, pflist = list(c(1,2), c(2,1), c(1,3)))
