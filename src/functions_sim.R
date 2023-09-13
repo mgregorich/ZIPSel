@@ -12,20 +12,20 @@ simulate_scenario <- function(scn, dsgn){
   ## Remove later
   # nr=1; scn=scenarios[nr,]; dsgn=sim_design[[scenarios[nr,]$dsgn]]
   
-  filename <- paste0("sim_i", scn$iter, "_n", scn$n, "_p", scn$p, "_beta", scn$beta_max, "_a", scn$a, 
-                     "_epsstd", scn$epsstd, "_propnz", scn$prop.nonzero, "_sampthresh", scn$sampthresh, ".rds")
+  filename <- paste0("sim_i", scn$iter, "_scn", scn$scenario, "_n", scn$n, "_p", scn$p, "_beta", scn$beta_max, "_a", scn$a, 
+                     "_eps", scn$epslvl, "_propzi", scn$propzi, "_struczero", scn$struczero, ".rds")
 
   # Generate large validation dataset
   data.val <- data_generation(dsgn = dsgn, scenario = scn$scenario, n = 100000, p=scn$p, beta_max = scn$beta_max, a = scn$a, epsstd = scn$epsstd, 
-                              prop.nonzero = scn$prop.nonzero, sampthresh = scn$sampthresh)
+                              propzi = scn$propzi, struczero = scn$struczero)
   data.val <- generate_dataobj(y = data.val$data_ana$y, x = data.val$data_ana$x, clinical = NULL)
   
   # Run replications
   scn_res <-  lapply(1:scn$iter, function(x){
     data_iter <- data_generation(dsgn = dsgn, scenario = scn$scenario, n = scn$n, p = scn$p, beta_max = scn$beta_max, a = scn$a, epsstd = scn$epsstd, 
-                                 prop.nonzero=scn$prop.nonzero, sampthresh=scn$sampthresh)
+                                 propzi=scn$propzi, struczero=scn$struczero)
     res_iter <-  data_analysis(df = data_iter, data.val = data.val, n = scn$n, p = scn$p, 
-                               ncv = 10, nR = 2, nlams = 10, pflist = list(c(1,2), c(2,1), c(1,3)))
+                               ncv = 10, nR = 2, nlams = 10)
     data_iter <- mapply(cbind, data_iter, "i" = x, SIMPLIFY = F)
     res_iter <- mapply(cbind, res_iter, "i" = x, SIMPLIFY = F)
     
@@ -41,23 +41,24 @@ simulate_scenario <- function(scn, dsgn){
 
 
 # ============================ Data generation =================================
-data_generation <- function(dsgn, scenario, n, p, beta_max, a, epsstd, prop.nonzero, sampthresh){
+data_generation <- function(dsgn, scenario, n, p, beta_max, a, epsstd, propzi, struczero){
   
   # # Remove later (parameter input for function)
   # dsgn=dsgn; scenario = scn$scenario; n=100000; p=scn$p; ngroups=scn$ngroups; a=scn$a; epsstd=scn$epsstd;
-  # prop.nonzero=scn$prop.nonzero; sampthresh=scn$sampthresh; beta_max=scn$beta_max
+  # propzi=scn$propzi; struczero=scn$struczero; beta_max=scn$beta_max
   
   # Parameter
-  xmean = 0
-  xstd = 0.5
   ngroups = 4
   
   # Groupwise Hub correlation design filled with toeplitz
   data_logvars <- simulate_data(dsgn, n)
 
-  # Structural zeros
-  D <- as.matrix(sapply(rep(rev(seq(0.3, 1, length.out = p/4)), 4), function(x) rbinom(n, size = 1, prob = x))) # per group linear increase in zero-inflation 0-80%
-  X <- as.matrix(data_logvars * D)
+  # Structural zeros for outcome generation
+  seq_propzi <- rep(seq(0,propzi, length.out = p/ngroups), ngroups)
+  seq_strucz <- seq_propzi * struczero
+
+  D_struc <- as.matrix(sapply(1-seq_strucz, function(x) rbinom(n, size = 1, prob = x))) # per group linear increase in zero-inflation 0-80%
+  X <- as.matrix(data_logvars * D_struc)
   
   # Extract hubs and indices of true predictors (scenario D)
   groupsize <- rep(p/ngroups, ngroups)
@@ -91,16 +92,20 @@ data_generation <- function(dsgn, scenario, n, p, beta_max, a, epsstd, prop.nonz
 
   # Generate outcome: a controls influence of X and D components
   eps <- rnorm(n, mean = 0, sd = epsstd)
-  y <- c(a * X %*% beta_X + (1-a) * D %*% beta_D  + eps)
+  y <- c(a * X %*% beta_X + (1-a) * D_struc %*% beta_D  + eps)
   
-  # Sampling zeros for data analyst
-  Xs <- X
-  Xs[Xs < sampthresh] <- 0
-  #plot(x=1:ncol(Xs), sort(apply(Xs,2, function(x) sum(x==0)/length(x))))
+  # Structural and sampling zeros for data analyst
+  sampzero <- 1 - struczero
+  seq_sampz <- seq_propzi * sampzero
+  sampz_thresh <- sapply(1:length(seq_sampz), function(i) quantile(data_logvars[,i], seq_sampz[i]))
+  D_samp <- sapply(1:ncol(data_logvars), function(j) (data_logvars[,j] > sampz_thresh[j])*1)
+  Xs <- (data_logvars * D_struc) * D_samp
+  # plot(x=1:ncol(Xs), sort(apply(Xs,2, function(x) sum(x==0)/length(x))))
   
   out <- list("data_ana" = list("y" = y, "x" = Xs),
-              "data_gen" = data.frame("y" = y, "X_true" = X, "D_true" = D, "eps" = eps),
-              "true_coef" = data.frame("beta_X" = beta_X, "beta_D" = beta_D))
+              "data_gen" = data.frame("y" = y, "X_true" = X, "D_struc" = D_struc, "D_samp" = D_samp,"eps" = eps),
+              "true_coef" = data.frame("beta_X" = beta_X, "beta_D" = beta_D),
+              "info_zi" = data.frame("vind" = 1:length(seq_propzi), "propzi" = seq_propzi, "struczi" = seq_strucz, "samplzi" = seq_sampz))
   return(out)
 }
 
@@ -125,9 +130,9 @@ data_analysis <- function(df, data.val, n, p, ncv=10, nR=2, nlams=10, pflist=lis
   data.obj <- generate_dataobj(y = df$data_ana$y, x = df$data_ana$x, clinical = NULL)
   
   # CV 
-  methnames <- c("oracle", "lasso", "ridge", "lasso-ridge", "ridge-lasso", "ridge-garrote", "lasso-garrote", "random forest")
+  methnames <- c("oracle", "lasso", "ridge", "lasso-ridge", "ridge-lasso", "ridge-garrote", "random forest")
   tbl_perf <- data.frame("model" = methnames,
-                         "penalty" = c("-",rep(c("combined"), times = 6), "-"),
+                         "penalty" = c("-",rep(c("combined"), times = 5), "-"),
                          R2 = NA, RMSE = NA, MAE = NA, C = NA, CS = NA)
   tbl_coef <- cbind.data.frame("var"=paste0("V", 1:nrow(df$true_coef)), df$true_coef)
   
@@ -183,28 +188,21 @@ data_analysis <- function(df, data.val, n, p, ncv=10, nR=2, nlams=10, pflist=lis
   tbl_perf[6, 3:7] <- eval_performance(pred = data.val$pred.rgarrote.cb, obs = data.val$y)
   tbl_coef$beta_rgarrote_cb_u <- fit.rgarrote.cb$coefficients[2:(p+1)]
   tbl_coef$beta_rgarrote_cb_d <- fit.rgarrote.cb$coefficients[(p+2):(2*p+1)]
-
-  # Lasso-garrote
-  fit.lgarrote.cb <- perform_rgarrote(data.obj, family = "gaussian", cv = ncv, R = nR, nlambda = rep(nlams, 2),
-                                      penalty = "combined", alpha1 = 1,split_vars = FALSE)
-  data.val$pred.lgarrote.cb <- predict_rgarrote(obj = fit.lgarrote.cb, newdata = data.val)
-  tbl_perf[7, 3:7] <- eval_performance(pred = data.val$pred.lgarrote.cb, obs = data.val$y)
-  tbl_coef$beta_lgarrote_cb_u <- fit.lgarrote.cb$coefficients[2:(p+1)]
-  tbl_coef$beta_lgarrote_cb_d <- fit.lgarrote.cb$coefficients[(p+2):(2*p+1)]
   
   # --- Random forest
   train <- data.frame(y = data.obj$y, data.obj$x)
   fit.rf <- ranger(y~., data = train, num.trees = 1000)
   data.val$pred.rf <- predict(fit.rf, data = data.val$x)$predictions
-  tbl_perf[8, 3:7] <- eval_performance(pred = data.val$pred.rf , obs = data.val$y)
+  tbl_perf[7, 3:7] <- eval_performance(pred = data.val$pred.rf , obs = data.val$y)
   
   # Merge results
   # Variable selection
   groupsize <- p/ngroups
-  list_models <- list(fit.lasso.cv, fit.ridge.cb, 
+  list_models <- list(fit.lasso.cv, 
+                      fit.ridge.cb, 
                       fit.rlasso.cb,
                       fit.lridge.cb,
-                      fit.rgarrote.cb, fit.lgarrote.cb)
+                      fit.rgarrote.cb)
   list_sel <- list()
   for(l in 1:length(list_models)){
     fit.model <-  list_models[[l]]

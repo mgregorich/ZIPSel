@@ -1,8 +1,8 @@
-# ==============================================================================
+# ============================================================================ #
 # Author: MG
 # Date: 09/05/2023
 # Info: Main execution file for the simulation study 
-# ==============================================================================
+# ============================================================================ #
 
 rm(list=ls())
 
@@ -34,7 +34,7 @@ sim_design <- setup[[2]]
 # ======================= Simulation ===========================================
 
 # --- Run through all scenarios
-plan(multisession, workers = detectCores()*.5)
+plan(multisession, workers = detectCores()*.25)
 invisible(future_lapply(1:nrow(scenarios), function(k) {
   tryCatch({simulate_scenario(scn=scenarios[k,], dsgn=sim_design[[scenarios[k,]$dsgn]])
   }, error = function(e) {

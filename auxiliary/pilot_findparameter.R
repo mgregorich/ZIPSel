@@ -22,15 +22,9 @@ sim_design <- setup[[2]]
 
 # --- Determine optimal residual variance to achieve R2: 0.2 and 0.5
 scenarios <- scenarios %>% 
-  mutate(epsstd = ifelse(scenario == "A" & p == 200 & a == .2165, epsstd * 5.5, epsstd),
-         epsstd = ifelse(scenario == "A" & p == 200 & a == .28, epsstd * 6.5, epsstd),
-         epsstd = ifelse(scenario == "A" & p == 200 & a == 1, epsstd * 20.25, epsstd),
-         epsstd = ifelse(scenario == "A" & p == 400 & a == .2165, epsstd * 10, epsstd),
-         epsstd = ifelse(scenario == "A" & p == 400 & a == .28, epsstd * 12, epsstd),
-         epsstd = ifelse(scenario == "A" & p == 400 & a == 1, epsstd * 40, epsstd)) %>% 
-  arrange(p, a, epsstd) %>%
-  filter(scenario %in% "A")
-scenarios$R2 <- NA
+  filter(epslvl != "none") %>%
+  arrange(p, a, epsstd) 
+scenarios$R2 <- scenarios$adjR2 <- NA
 for(i in 1: nrow(scenarios)){
   print(i)
   scn = scenarios[i,]

@@ -24,21 +24,30 @@ format:
 
 ```{r}
 rm(list=ls())
-pacman::p_load(ggplot2, dplyr, tidyverse, gt, MASS, patchwork)
-source(here::here("src","functions_aux.R"))
+# Packages
+pacman::p_load(ggplot2, parallel, future.apply, stringr, kableExtra,
+               openxlsx, dplyr, tidyverse, tableone, concreg, Matrix,
+               glmnet, MASS, ranger, simdata, reshape2)
 set.seed(666)
 
-# Parameters
-n = 200
-p = 100
-k = 4
-a = 0.5
-xmean = -2.5
-epsstd = 2.5
-beta_max = 5
-sampthresh = .05
-groupsize = c(25, 25, 25, 25)
-prop.nonzero <- 0.5
+# R files
+source(here::here("src", "setup.R"))
+source(here::here("src","functions_aux.R"))
+source(here::here("src","functions_sim.R"))
+
+# Parameter
+ngroups = 4
+xmean = 0
+xstd = 0.5
+
+# Load & save setup
+setup <- readRDS(here::here("src", "scenario_setup.rds"))
+scenarios <- setup[[1]]
+sim_design <- setup[[2]]
+
+scn_nr = 10
+scn <- scenarios[scn_nr,]
+dsgn <- sim_design[[scenarios[scn_nr,]$dsgn]]
 ```
 
 # Hub correlation structure
@@ -54,10 +63,10 @@ prop.nonzero <- 0.5
 #' eidim is the space from which the noise is generated, the smaller the more noise
 #' power = 2 makes the correlations stay high
 #' power = 0.5 makes the correlations descent rapidly
-hub_cormat <- simcor.H(k = k, size = groupsize, rho = rbind(c(.8,.2), c(.8,.2), c(.8,.2), c(.4,.2)), power = 1,
-                     epsilon = .075, eidim = 2)
-hub_cormat <- Matrix::nearPD(hub_cormat, base.matrix = TRUE, keepDiag = TRUE)$mat
-melted_cormat <- reshape2::melt(round(hub_cormat,4))
+rhomat <- rbind(c(.8,.2), c(.8,.2), c(.8,.2), c(.2,.0))  # correlation ranges in each group
+hub_cormat <- simcor.H(k = ngroups, size = rep(scn$p/ngroups,ngroups),rho = rhomat, power = 1, epsilon = 0.075, eidim = 2)
+if(!matrixcalc::is.positive.definite(hub_cormat)) hub_cormat <- nearPD(hub_cormat, base.matrix = TRUE, keepDiag = TRUE)$mat
+melted_cormat <- melt(hub_cormat)
 
 pc1 <- ggplot(data = melted_cormat, aes(x=Var1, y=Var2, fill=value)) + 
   geom_tile() +
@@ -70,185 +79,22 @@ pc1 <- ggplot(data = melted_cormat, aes(x=Var1, y=Var2, fill=value)) +
 pc1
 ```
 
-# Log-normal data
-
-```{r}
-# Normally distributed data
-data_vars <- mvrnorm(n = n, mu = rep(-2.5, nrow(hub_cormat)), Sigma = hub_cormat)
-
-
-# Log normally distributed data
-data_logvars <- exp(data_vars)
-data_logvars[data_logvars>quantile(data_logvars, 0.99)] <- 0
-```
-
-```{r}
-#| fig.width: 8
-#| fig.height: 4
-p1 <- data_vars %>%
-  data.frame() %>%
-  mutate(ID=1:nrow(.)) %>%
-  pivot_longer(cols=!ID, values_to="Values", names_to="Variable") %>%
-  mutate_at(vars(Values), as.numeric) %>%
-  ggplot(aes(x=Values, group=ID, col=ID)) +
-  geom_density() +
-  scale_x_continuous("Value") +
-  scale_y_continuous("Density") +
-  theme_bw() +
-  theme(text=element_text(size=14), legend.position = "None")
-
-p2 <- data_logvars %>%
-  data.frame() %>%
-  mutate(ID=1:nrow(.)) %>%
-  pivot_longer(cols=!ID, values_to="Values", names_to="Variable") %>%
-  mutate_at(vars(Values), as.numeric) %>%
-  ggplot(aes(x=Values, group=ID, col=ID)) +
-  geom_density() +
-  scale_x_continuous("Value") +
-  scale_y_continuous("Density") +
-  theme_bw() +
-  theme(text=element_text(size=14), legend.position = "None")
-p1 + p2
-```
-
-```{r}
-#| fig.width: 8
-#| fig.height: 4
-cormat <- cor(data_logvars)
-melted_cormat <- reshape2::melt(round(cormat,4))
-
-pc2 <- ggplot(data = melted_cormat, aes(x=Var1, y=Var2, fill=value)) + 
-  geom_tile() +
-  scale_fill_gradient2(low = "blue", high = "red", mid = "white", 
-                       midpoint = 0, limit = c(-1,1), space = "Lab", 
-                       name="") +
-  scale_x_continuous("Candidate variables", expand=c(0,0)) +
-  scale_y_continuous("Candidate variables", expand=c(0,0)) +
-  theme_bw() 
-pc1 + ggtitle("Hub correlation design") + pc2 + ggtitle("Empirical correlation") +
-  plot_layout(guides = "collect")
-```
-
-```{r}
-# Structural zeros
-D <- rbinom(n*p, size=1, prob=matrix(prop.nonzero, n, k, byrow=TRUE))
-X <- data_logvars * D
-```
-
-```{r}
-# Normally distributed data
-data_vars <- mvrnorm(n = n, mu = rep(xmean, p), Sigma = hub_cormat)
-
-# Log normally distributed data
-data_logvars <- exp(data_vars)
-
-# Structural zeros
-D <- sapply(rep(rev(seq(0.3, 1, length.out=p/4)),4), function(x) rbinom(n, size=1, prob=x)) # per group linear increase in zero-inflation 0-80%
-X <- data_logvars * D
-
-# Extract hubs and indices of true predictors (scenario D)
-hubindex <- cumsum(groupsize) - groupsize + 1 # identify index of hub
-nelem <- c(5,5,5,5)  # number of true predictors in each group
-truepredindex <- c(apply(cbind(hubindex, hubindex + nelem - 1),1, function(x) seq(x[1], x[2], 1)))
-ptrue <- length(truepredindex)
-
-# Generate coeffs and error 
-beta_X <- beta_D <- rep(0, p)
-beta_X[truepredindex] <- c(sapply(nelem, function(x) rev(seq(0, beta_max, length.out = x+1)[-1])))
-beta_D[truepredindex] <-  c(sapply(nelem, function(x) sample(seq(0, beta_max, length.out = x+1)[-1], x)))
-
-# Generate outcome: a controls influence of X and D components
-eps <- rnorm(n, mean = 0, sd = epsstd)
-
-```
-
-```{r}
-# Generate outcome
-y <- a * X %*% beta_X + (1-a) * D %*% beta_D  + eps
-hist(y, main="Outcome variable y")
-```
-
-```{r}
-# Sampling zeros for data analyst
-Xs <- X
-Xs[Xs < sampthresh] <- 0
-
-plot(x=1:ncol(Xs), sort(apply(Xs,2, function(x) sum(x==0)/length(x))))
-```
-
-# More technical data generation
-
-```{r}
-# Compute mean and covariance for X when Y=exp(X)~logMN(mu, sigma) with mu and sigma given
-compute_mnxparams <- function(rho_logx, sd_logx, mu_logx){
-  # rho_logx=hub_cormat; mu_logx = mu_logx; sd_logx=stddev_logx
-  if(all(length(mu_logx)!=c(1, length(diag(cov_logx))))){
-    stop("Length of mu_logx must be 1 or equal to the diagonal length of cov_logx.")}
-  if(length(sd_logx)!=nrow(rho_logx)){sd_logx <- rep(sd_logx[1], nrow(rho_logx))}
-  if(length(mu_logx)==1){mu_logx <- rep(mu_logx, nrow(rho_logx))}
-
-  cov_logx <- sd_logx %*% t(sd_logx)*rho_logx
-  mu_x <- log(mu_logx) - 0.5 * diag(cov_logx)
-
-  cov_x <- matrix(NA, nrow=nrow(cov_logx), ncol=ncol(cov_logx))
-  for (i in 1:nrow(cov_logx)) {
-    for (j in 1:ncol(cov_logx)) {
-      print(paste0(i, " and ", j,"\n"))
-        cov_x[i, j] <- log((cov_logx[i, j] / (mu_logx[i] * mu_logx[j])) + 1)
-    }
-  }
-  return(list(mu_x, cov_x))
-}
-```
-
 # Simdata approach
 
 ```{r}
-hub_cormat <- simcor.H(k = k, size = groupsize, rho = rbind(c(.8,.2), c(.8,.2), c(.8,.2), c(.4,.2)), power = 1,
-                     epsilon = .075, eidim = 2)
-hub_cormat <- Matrix::nearPD(hub_cormat, base.matrix = TRUE, keepDiag = TRUE)$mat
-melted_cormat <- reshape2::melt(round(hub_cormat,4))
-
-p_cor_theo <- ggplot(data = melted_cormat, aes(x=Var1, y=Var2, fill=value)) + 
-  geom_tile() +
-  scale_fill_gradient2(low = "blue", high = "red", mid = "white", 
-                       midpoint = 0, limit = c(-1,1), space = "Lab", 
-                       name="") +
-  scale_x_continuous("Candidate variables", expand=c(0,0)) +
-  scale_y_continuous("Candidate variables", expand=c(0,0)) +
-  theme_bw() 
-
-```
-
-```{r}
-distlist <- rep(list(function(x) qlnorm(x, meanlog = 0, sdlog = 1)),nrow(hub_cormat))
-dsgn = simdata::simdesign_norta(cor_target_final = hub_cormat, dist = distlist, 
-                                transform_initial = data.frame,
-                                names_final = paste0("V",1:nrow(hub_cormat)), seed_initial = 1)
-sim_data = simdata::simulate_data(dsgn, 100, seed = 2)
+# Data generation
+data_sim <- data_generation(dsgn=dsgn, scenario = scn$scenario, n=scn$n, p=scn$p, beta_max = scn$beta_max, a = scn$a, epsstd = scn$epsstd,
+                                prop.nonzero = scn$prop.nonzero, sampthresh = scn$sampthresh)
 ```
 
 ```{r}
 #| fig.width: 8
 #| fig.height: 4
-corsim <- as.matrix(cor(sim_data))
-colnames(sim_data) <- rownames(sim_data) <- NULL
-melted_cormat <- reshape2::melt(round(corsim,4))
-
-p_cor_emp <- ggplot(data = melted_cormat, aes(x=Var1, y=Var2, fill=value)) + 
-  geom_tile() +
-  scale_fill_gradient2(low = "blue", high = "red", mid = "white", 
-                       midpoint = 0, limit = c(-1,1), space = "Lab", 
-                       name="") +
-  scale_x_continuous("Candidate variables", expand=c(0,0)) +
-  scale_y_continuous("Candidate variables", expand=c(0,0)) +
-  theme_bw() 
-p_cor_theo + p_cor_emp + plot_annotation(tag_levels = 'A') +  plot_layout(guides = "collect")
-ggsave(file = here::here("output", "figures", "fig_correlation_structure.tiff"), width=3*100, height=1.5*100, units="mm", dpi=350, compression = "lzw")
+hist(data_sim$data_ana$y, main="Distribution of the outcome variable y", xlab = "Value")
 ```
 
 ```{r}
-sim_data %>%
+data_sim$data_ana$x %>%
   data.frame() %>%
   mutate(ID=1:nrow(.)) %>%
   pivot_longer(cols=!ID, values_to="Values", names_to="Variable") %>%
@@ -259,4 +105,9 @@ sim_data %>%
   scale_y_continuous("Density") +
   theme_bw() +
   theme(text=element_text(size=14), legend.position = "None")
+```
+
+```{r}
+plot(1:ncol(data_sim$data_ana$x), sort(apply(data_sim$data_ana$x,2, function(x) sum(x==0)/length(x)), decreasing = FALSE), 
+     xlab = "Index of variables", ylab = "Proportion of zero-inflation")
 ```

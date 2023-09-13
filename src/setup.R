@@ -7,17 +7,16 @@
 
 # --- Parameter
 set.seed(666)
-iter <- 5
+iter <- 2
 regenerate_simdata <- FALSE
 
 n <- c(100,200,400)         # sample size
 p <- c(200,400)             # number of candidate predictors
-rhomat <- list(rbind(c(.8,.2), c(.8,.2), c(.8,.2), c(.4,.2)))   # correlation ranges in each group
 beta_max <- 5                              # maximum coefficient
 a <- c(0.2165, 0.28, 1)                    # medium balance of U and D influence on y
-epsstd <- c(1, 2)
-prop.nonzero <- 0.5         
-sampthresh <- 0.05
+epsstd <- c(0, 1, 2)
+propzi <- c(0.25, 0.5, 0.75)         
+struczero <- c(0.33, 0.66)
 scenario <- c("A", "B")
 
 tbl_simdata <- data.frame("p" = p, "dsgns" = paste0("dsgn_", 1:length(p)))
@@ -28,15 +27,15 @@ scenarios <- expand.grid(
   scenario = scenario,
   n = n,
   p = p,
-  rhomat = rhomat,
   beta_max = beta_max,
   a = a,
   epsstd = epsstd,
-  prop.nonzero = prop.nonzero,
-  sampthresh = sampthresh) %>%
+  propzi = propzi,
+  struczero = struczero) %>%
   merge(., tbl_simdata, by=c("p")) %>%
   relocate(p, .after=n)  %>% 
-  mutate(epsstd = ifelse(scenario == "A" & p == 200 & a == .2165, epsstd * 5.5, epsstd),
+  mutate(epslvl = ifelse(epsstd == 0, "none", ifelse(epsstd == 1, "moderate", "high")),
+         epsstd = ifelse(scenario == "A" & p == 200 & a == .2165, epsstd * 5.5, epsstd),
          epsstd = ifelse(scenario == "A" & p == 200 & a == .28, epsstd * 6.5, epsstd),
          epsstd = ifelse(scenario == "A" & p == 200 & a == 1, epsstd * 20.25, epsstd),
          epsstd = ifelse(scenario == "A" & p == 400 & a == .2165, epsstd * 10, epsstd),
@@ -49,7 +48,8 @@ scenarios <- expand.grid(
          epsstd = ifelse(scenario == "B" & p == 400 & a == .28, epsstd * 5.35, epsstd),
          epsstd = ifelse(scenario == "B" & p == 400 & a == 1, epsstd * 15, epsstd),
          beta_max = ifelse(scenario %in% "A", beta_max*0.4, beta_max)) %>% 
-  arrange(p, a, epsstd)
+  relocate(epslvl, .before = epsstd) %>%
+  arrange(p, a, epslvl)
 
 
 # --- Data simulation design

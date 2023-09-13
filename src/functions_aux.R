@@ -57,7 +57,8 @@ plot_calibration <- function(pred, obs, fig.title = ""){
 
 generate_simdesign <- function(p, xmean=0, xstd=0.5, ngroups=4){
   # Groupwise Hub correlation design filled with toeplitz
-  hub_cormat <- simcor.H(k = ngroups, size = rep(p/ngroups,ngroups),rho = rhomat[[1]], power = 1, epsilon = 0.075, eidim = 2)
+  rhomat <- rbind(c(.8,.2), c(.8,.2), c(.8,.2), c(.2,.1))  # correlation ranges in each group
+  hub_cormat <- simcor.H(k = ngroups, size = rep(p/ngroups,ngroups),rho = rhomat, power = 1, epsilon = 0.075, eidim = 2)
   if(!matrixcalc::is.positive.definite(hub_cormat)) hub_cormat <- nearPD(hub_cormat, base.matrix = TRUE, keepDiag = TRUE)$mat
   
   # Generate simdata design
@@ -520,7 +521,7 @@ plot.coefficients.protogarrote<-function(obj, order="none", scale=c(1,1,1,1), pl
 perform_penreg <- function(data.obj, penalties = 1, family = "gaussian", penalty = "combined", cv = 10, R = 2, nl1 = 10, alpha1 = 0, 
                            pflist = NULL, split_vars = FALSE){
   # Ridge: data.obj=data.obj; penalties=1; family="gaussian"; penalty="combined"; cv=10; R=2; nl1=10; alpha1=0; split_vars=FALSE
-  # Lasso: data.obj=data.obj; penalties=1; family="gaussian"; penalty="combined"; cv=10; R=2; nl1=10; alpha1=1; pflist=NULL
+  # Lasso: data.obj=data.obj; penalties=1; family="gaussian"; penalty="combined"; cv=10; R=2; nl1=10; alpha1=1; pflist=NULL; split_vars=FALSE
   
   # Check for misspecifications
   if(all(penalty != c("combined", "component"))){ stop("Penalty must be 'combined' or 'component'.") }
@@ -567,10 +568,13 @@ perform_penreg <- function(data.obj, penalties = 1, family = "gaussian", penalty
     
     ## CV model with offset
     lambdas <- cvmerror <- matrix(0, R, nl1) 
+    cv_model <- cv.glmnet(x = varmat, y = y, alpha = alpha1, standardize = FALSE,
+                          offset = clin_offset, penalty.factor = pfvector, nfolds = cv)
     
     for(outer in 1:R){
       set.seed(outer)
       # CV model with offset
+      glmnet.control(devmax = 1) # for R2=1 scenario
       cv_model <- cv.glmnet(x = varmat, y = y, alpha = alpha1, standardize = FALSE,
                             offset = clin_offset, penalty.factor = pfvector, nfolds = cv, nlambda = nl1)
       cvmerror[outer, ] <- cv_model$cvm
@@ -851,6 +855,7 @@ perform_rlasso <- function(data.obj, family = "gaussian", nlambda = c(10, 10), c
   if(!split_vars & penalty=="component"){ stop("Component-specific penalty only valid for split variable.") }
   if(penalty == "combined" & split_vars){ pflist <- list(c(1, 1))
   }else if(penalty == "combined" & !split_vars){pflist <- list(c(1))}
+  glmnet.control(devmax = 1) # for R2=1 scenario
   
   x <- data.obj[["x"]]
   u <- data.obj[["u"]]
@@ -924,7 +929,6 @@ perform_rlasso <- function(data.obj, family = "gaussian", nlambda = c(10, 10), c
           fit2.lasso <- glmnet(y = y.train, x = xd.train, alpha = alpha2, nlambda = nl2, 
                                offset = clin_offset_train, penalty.factor = penalty_lasso)
           b.lasso <- coef(fit2.lasso)
-          
           beta[1:(ncol(xdmat) + 1), (nl2 * (i - 1) + 1):(nl2 * (i - 1) + nl1)] <- as.matrix(b.lasso)
         } # now we have all nl1*nl2 betas               
         
@@ -950,7 +954,7 @@ perform_rlasso <- function(data.obj, family = "gaussian", nlambda = c(10, 10), c
   }
   
   # Index of minimal cvm
-  index <- which(prederror == min(prederror), arr.ind = TRUE) 
+  index <- which(prederror == min(prederror), arr.ind = TRUE)[1,] 
   se.prederror <- sqrt(prederror2 - prederror^2)
   
   ## Final model
@@ -985,9 +989,9 @@ perform_rlasso <- function(data.obj, family = "gaussian", nlambda = c(10, 10), c
       }else{penalty_x <- abs(b.ridge)}
       penalty_lasso <- 1 / c(penalty_x)^1
       
-      fit2.lasso <- glmnet(y = y, x = xdmat, family = family, alpha = alpha2, nlambda = nl2, offset = clin_offset, penalty.factor = penalty_lasso)
-      lambda[i, , p] <- fit2.lasso$lambda
-      df[i, ,p] <- fit2.lasso$df
+      fit2.lasso <- glmnet(y = y, x = xdmat, family = family, alpha = alpha2, nlambda = nl1, offset = clin_offset, penalty.factor = penalty_lasso)
+      lambda[i, 1:length(fit2.lasso$lambda), p] <- fit2.lasso$lambda
+      df[i, 1:length(fit2.lasso$df), p] <- fit2.lasso$df
       beta[1:(ncol(xdmat) + 1),(nl2 * (i - 1) + 1):(nl2 * (i - 1) + nl1), p] <- as.matrix(coef(fit2.lasso))
     } # now we have all nl1*nl2*npf beta vectors               
   }
@@ -1164,7 +1168,7 @@ perform_rgarrote <- function(data.obj, family = "gaussian", nlambda = c(10,10), 
   } 
   
   # Index of minimal cvm
-  index <- which(prederror == min(prederror), arr.ind = TRUE) 
+  index <- which(prederror == min(prederror), arr.ind = TRUE)[1,]
   se.prederror <- sqrt(prederror2 - prederror^2)
 
   ## Final model

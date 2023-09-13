@@ -35,11 +35,11 @@ pacman::p_load(ggplot2, parallel, future.apply, stringr, kableExtra,
 
 # Paths
 out.path <- "output"
-sim.date <- "2023-08-21"
+sim.date <- "2023-09-13"
 sim.file <- paste0("sim_", sim.date,"/")
 sim.path <- here::here(out.path, sim.file)
-ggcols <- c("black", "grey45", "deepskyblue3", "royalblue3", "seagreen4", "lightcoral", "darkred","goldenrod3")
-methnames <- c("oracle", "lasso", "ridge", "ridge-lasso", "lasso-ridge", "ridge-garrote", "lasso-garrote", "random forest")
+ggcols <- c("black", "grey45", "deepskyblue3", "royalblue3", "seagreen4", "darkred","goldenrod3")
+methnames <- c("oracle", "lasso", "ridge", "ridge-lasso", "lasso-ridge", "ridge-garrote", "random forest")
 # Read in results
 tbl_res <- readRDS(here::here(sim.path, "tbl_scenario_results.rds"))
 
@@ -48,37 +48,39 @@ tbl_perf <- tbl_res$performance$tbl_perf  %>%
 tbl_iters_perf <- tbl_res$iters$tbl_iters_perf  %>% 
   mutate(model = fct_relevel(model, methnames))
 tbl_varsel <- tbl_res$performance$tbl_varsel %>% 
-  mutate(model = fct_relevel(model, methnames))
+  mutate(model = fct_relevel(model, methnames[2:7]))
 tbl_allsel <- tbl_res$performance$tbl_allsel %>% 
-  mutate(model = fct_relevel(model, methnames))
+  mutate(model = fct_relevel(model, methnames[2:7]))
 tbl_groupsel <- tbl_res$performance$tbl_groupsel
 ```
 
 # Performance
 
 ## RMSE
-::: panel-tabset
 
-### a=0.2165 (X = D)
+:::{.panel-tabset}
+
+### Scenario A
+
 ```{r}
-#| fig-width: 10
-#| fig-height: 5
+#| fig-width: 20
+#| fig-height: 10
 tbl_perf %>%
-  dplyr::select(a, n, p, epsstd, model, penalty, RMSE.est) %>%
-  filter(penalty %in% c("combined", "-") & a == 0.2165) %>%
+  dplyr::select(scenario, a, n, p, epslvl, model, penalty, RMSE.est) %>%
+  filter(scenario %in% "A" & penalty %in% c("combined", "-")) %>%
   mutate(n = to_factor(n)) %>%
   arrange(model, penalty) %>%
-  pivot_wider(id_cols = c(n, p, epsstd), values_from = RMSE.est, names_from = model) %>%
-  nested_loop_plot(x = "n", steps = "epsstd", grid_cols ="p" ,
-                   steps_y_base = 0, steps_y_height = 0.5,
+  pivot_wider(id_cols = c(a, n, p, epslvl), values_from = RMSE.est, names_from = model) %>%
+  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="p" ,
+                   steps_y_base = -2, steps_y_height = 0.5, grid_rows = "a",
                    steps_names = "Residual variance",
                    x_name = "Sample size", y_name = "Averaged RMSPE",
                    spu_x_shift = 1.5,
-                   grid_scales = "free_y",
+                   grid_scales="free_y",
                    colors = ggcols,
                    steps_values_annotate = TRUE, steps_annotation_size = 3,
                    hline_intercept = 0,
-                   y_expand_add = c(1, 0.25),
+                   y_expand_add = c(5, 0.25),
                    post_processing = list(
                        add_custom_theme = list(
                          text=element_text(size = 14),
@@ -88,55 +90,27 @@ tbl_perf %>%
                    )) 
 ```
 
-### a=0.2800 (2X = D)
-```{r}
-#| fig-width: 10
-#| fig-height: 5
-tbl_perf %>%
-  dplyr::select(a, n, p, epsstd, model, penalty, RMSE.est) %>%
-  filter(penalty %in% c("combined", "-") & a == .28) %>%
-  mutate(n = to_factor(n)) %>%
-  arrange(model, penalty) %>%
-  pivot_wider(id_cols = c(n, p, epsstd), values_from = RMSE.est, names_from = model) %>%
-  nested_loop_plot(x = "n", steps = "epsstd", grid_cols ="p" ,
-                   steps_y_base = 0, steps_y_height = 0.5,
-                   steps_names = "Residual variance",
-                   x_name = "Sample size", y_name = "Averaged RMSPE",
-                   spu_x_shift = 1.5,
-                   grid_scales = "free_y",
-                   colors = ggcols,
-                   steps_values_annotate = TRUE, steps_annotation_size = 3,
-                   hline_intercept = 0,
-                   y_expand_add = c(1, 0.25),
-                   post_processing = list(
-                       add_custom_theme = list(
-                         text=element_text(size = 14),
-                           axis.text.x = element_text(size = 14,
-                                                      angle = -90,
-                                                      vjust = 0.5))
-                   )) 
-```
+### Scenario B
 
-### a=1 (X, D=0)
 ```{r}
-#| fig-width: 10
-#| fig-height: 5
+#| fig-width: 20
+#| fig-height: 10
 tbl_perf %>%
-  dplyr::select(a, n, p, epsstd, model, penalty, RMSE.est) %>%
-  filter(penalty %in% c("combined", "-") & a == 1) %>%
+  dplyr::select(scenario, a, n, p, epslvl, model, penalty, RMSE.est) %>%
+  filter(scenario %in% "B" & penalty %in% c("combined", "-")) %>%
   mutate(n = to_factor(n)) %>%
   arrange(model, penalty) %>%
-  pivot_wider(id_cols = c(n, p, epsstd), values_from = RMSE.est, names_from = model) %>%
-  nested_loop_plot(x = "n", steps = "epsstd", grid_cols ="p" ,
-                   steps_y_base = 0, steps_y_height = 0.5,
+  pivot_wider(id_cols = c(a, n, p, epslvl), values_from = RMSE.est, names_from = model) %>%
+  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="p" ,
+                   steps_y_base = -2, steps_y_height = 0.5, grid_rows = "a",
                    steps_names = "Residual variance",
                    x_name = "Sample size", y_name = "Averaged RMSPE",
                    spu_x_shift = 1.5,
-                   grid_scales = "free_y",
+                   grid_scales="free_y",
                    colors = ggcols,
                    steps_values_annotate = TRUE, steps_annotation_size = 3,
                    hline_intercept = 0,
-                   y_expand_add = c(1, 0.25),
+                   y_expand_add = c(5, 0.25),
                    post_processing = list(
                        add_custom_theme = list(
                          text=element_text(size = 14),
@@ -150,18 +124,16 @@ tbl_perf %>%
 
 ## R2
 
-::: panel-tabset
 
-### a=0.2165 (X=D)
 ```{r}
 tbl_perf %>%
-  dplyr::select(a, n, p, epsstd, model, penalty, R2.est) %>%
-  filter(penalty %in% c("combined", "-") & a==.2165) %>%
+  dplyr::select(scenario, a, n, p, epslvl, model, penalty, R2.est) %>%
+  filter(scenario %in% "B" & penalty %in% c("combined", "-")) %>%
   mutate(n = to_factor(n)) %>%
   arrange(model, penalty) %>%
-  pivot_wider(id_cols = c(n, p, epsstd), values_from = R2.est, names_from = model) %>%
-  nested_loop_plot(x = "n", steps = "epsstd", grid_cols ="p" ,
-                   steps_y_base = -0.05, steps_y_height = 0.05,
+  pivot_wider(id_cols = c(a, n, p, epslvl), values_from = R2.est, names_from = model) %>%
+  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="p" ,
+                   steps_y_base = -0.05, steps_y_height = 0.05, grid_rows = "a",
                    steps_names = "Residual variance",
                    x_name = "Sample size", y_name = "Averaged R2",
                    spu_x_shift = 1.5,
@@ -178,76 +150,19 @@ tbl_perf %>%
                                                       vjust = 0.5))
                    )) 
 ```
-
-### a=0.28 ("X, D=0"X=D)
-```{r}
-tbl_perf %>%
-  dplyr::select(a, n, p, epsstd, model, penalty, R2.est) %>%
-  filter(penalty %in% c("combined", "-") & a==.28) %>%
-  mutate(n = to_factor(n)) %>%
-  arrange(model, penalty) %>%
-  pivot_wider(id_cols = c(n, p, epsstd), values_from = R2.est, names_from = model) %>%
-  nested_loop_plot(x = "n", steps = "epsstd", grid_cols ="p" ,
-                   steps_y_base = -0.05, steps_y_height = 0.05,
-                   steps_names = "Residual variance",
-                   x_name = "Sample size", y_name = "Averaged R2",
-                   spu_x_shift = 1.5,
-                   grid_scales="free_y",
-                   colors = ggcols,
-                   steps_values_annotate = TRUE, steps_annotation_size = 3,
-                   hline_intercept = 0,
-                   y_expand_add = c(0.1, 0.1),
-                   post_processing = list(
-                       add_custom_theme = list(
-                         text=element_text(size=14),
-                           axis.text.x = element_text(size = 14,
-                                                      angle = -90,
-                                                      vjust = 0.5))
-                   )) 
-```
-
-### a=1 (X, D=0)
-```{r}
-tbl_perf %>%
-  dplyr::select(a, n, p, epsstd, model, penalty, R2.est) %>%
-  filter(penalty %in% c("combined", "-") & a==1) %>%
-  mutate(n = to_factor(n)) %>%
-  arrange(model, penalty) %>%
-  pivot_wider(id_cols = c(n, p, epsstd), values_from = R2.est, names_from = model) %>%
-  nested_loop_plot(x = "n", steps = "epsstd", grid_cols ="p" ,
-                   steps_y_base = -0.05, steps_y_height = 0.05,
-                   steps_names = "Residual variance",
-                   x_name = "Sample size", y_name = "Averaged R2",
-                   spu_x_shift = 1.5,
-                   grid_scales="free_y",
-                   colors = ggcols,
-                   steps_values_annotate = TRUE, steps_annotation_size = 3,
-                   hline_intercept = 0,
-                   y_expand_add = c(0.1, 0.1),
-                   post_processing = list(
-                       add_custom_theme = list(
-                         text=element_text(size=14),
-                           axis.text.x = element_text(size = 14,
-                                                      angle = -90,
-                                                      vjust = 0.5))
-                   )) 
-```
-
-:::
 
 ## Calibration slope
 
-::: panel-tabset
-### a=.2165 
+
 ```{r}
 tbl_perf %>%
-  dplyr::select(a, n, p, epsstd, model, penalty, CS.est) %>%
-  filter(penalty %in% c("combined", "-") & a==.2165) %>%
+  dplyr::select(scenario, a, n, p, epslvl, model, penalty, CS.est) %>%
+  filter(scenario %in% "B" & penalty %in% c("combined", "-")) %>%
   mutate(n = to_factor(n)) %>%
   arrange(model, penalty) %>%
-  pivot_wider(id_cols = c(n, p, epsstd), values_from = CS.est, names_from = model) %>%
-  nested_loop_plot(x = "n", steps = "epsstd", grid_cols ="p" ,
-                   steps_y_base = 0, steps_y_height = 0.05,
+  pivot_wider(id_cols = c(a, n, p, epslvl), values_from = CS.est, names_from = model) %>%
+  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="p" ,
+                   steps_y_base = 0, steps_y_height = 0.05, grid_rows = "a",
                    steps_names = "Residual variance",
                    x_name = "Sample size", y_name = "Averaged CS",
                    spu_x_shift = 1.5,
@@ -264,102 +179,21 @@ tbl_perf %>%
                                                       vjust = 0.5))
                    )) 
 ```
-
-### a=.28 
-```{r}
-tbl_perf %>%
-  dplyr::select(a, n, p, epsstd, model, penalty, CS.est) %>%
-  filter(penalty %in% c("combined", "-") & a==.28) %>%
-  mutate(n = to_factor(n)) %>%
-  arrange(model, penalty) %>%
-  pivot_wider(id_cols = c(n, p, epsstd), values_from = CS.est, names_from = model) %>%
-  nested_loop_plot(x = "n", steps = "epsstd", grid_cols ="p" ,
-                   steps_y_base = 0, steps_y_height = 0.05,
-                   steps_names = "Residual variance",
-                   x_name = "Sample size", y_name = "Averaged CS",
-                   spu_x_shift = 1.5,
-                   grid_scales="free_y",
-                   colors = ggcols,
-                   steps_values_annotate = TRUE, steps_annotation_size = 3,
-                   hline_intercept = 0,
-                   y_expand_add = c(0.1, 0.25),
-                   post_processing = list(
-                       add_custom_theme = list(
-                         text=element_text(size=14),
-                           axis.text.x = element_text(size = 14,
-                                                      angle = -90,
-                                                      vjust = 0.5))
-                   )) 
-```
-
-### a=1 
-```{r}
-tbl_perf %>%
-  dplyr::select(a, n, p, epsstd, model, penalty, CS.est) %>%
-  filter(penalty %in% c("combined", "-") & a==1) %>%
-  mutate(n = to_factor(n)) %>%
-  arrange(model, penalty) %>%
-  pivot_wider(id_cols = c(n, p, epsstd), values_from = CS.est, names_from = model) %>%
-  nested_loop_plot(x = "n", steps = "epsstd", grid_cols ="p" ,
-                   steps_y_base = 0, steps_y_height = 0.05,
-                   steps_names = "Residual variance",
-                   x_name = "Sample size", y_name = "Averaged CS",
-                   spu_x_shift = 1.5,
-                   grid_scales="free_y",
-                   colors = ggcols,
-                   steps_values_annotate = TRUE, steps_annotation_size = 3,
-                   hline_intercept = 0,
-                   y_expand_add = c(0.1, 0.25),
-                   post_processing = list(
-                       add_custom_theme = list(
-                         text=element_text(size=14),
-                           axis.text.x = element_text(size = 14,
-                                                      angle = -90,
-                                                      vjust = 0.5))
-                   )) 
-```
-
-:::
 
 # Variable selection
 
 ## False discovery rate
-::: panel-tabset
-### a=.2165 
+
+
+
 ```{r}
 tbl_allsel %>%
-  dplyr::select(a, n, p, epsstd, model, penalty, FPDR) %>%
-  filter(penalty %in% c("combined", "-") & a==.2165) %>%
+  dplyr::select(scenario, a, n, p, epslvl, model, penalty, FPDR) %>%
+  filter(scenario %in% "B" & penalty %in% c("combined", "-")) %>%
   mutate(n = to_factor(n)) %>%
   arrange(model, penalty) %>%
-  pivot_wider(id_cols = c(n, p, epsstd), values_from = FPDR, names_from = model) %>%
-  nested_loop_plot(x = "n", steps = "epsstd", grid_cols ="p" ,
-                   steps_y_base = 0, steps_y_height = 0.05,
-                   steps_names = "Residual variance",
-                   x_name = "Sample size", y_name = "FPDR",
-                   spu_x_shift = 1.5,
-                   grid_scales="free_y",
-                   colors = ggcols,
-                   steps_values_annotate = TRUE, steps_annotation_size = 3,
-                   hline_intercept = 0,
-                   y_expand_add = c(0.1, 0.25),
-                   post_processing = list(
-                       add_custom_theme = list(
-                         text=element_text(size=14),
-                           axis.text.x = element_text(size = 14,
-                                                      angle = -90,
-                                                      vjust = 0.5))
-                   )) 
-```
-### a=.28 
-```{r}
-tbl_allsel %>%
-  dplyr::select(a, n, p, epsstd, model, penalty, FPDR) %>%
-  filter(penalty %in% c("combined", "-") & a==.28) %>%
-  mutate(n = to_factor(n)) %>%
-  arrange(model, penalty) %>%
-  pivot_wider(id_cols = c(n, p, epsstd), values_from = FPDR, names_from = model) %>%
-  nested_loop_plot(x = "n", steps = "epsstd", grid_cols ="p" ,
+  pivot_wider(id_cols = c(a, n, p, epslvl), values_from = FPDR, names_from = model) %>%
+  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="p" , grid_rows = "a",
                    steps_y_base = 0, steps_y_height = 0.05,
                    steps_names = "Residual variance",
                    x_name = "Sample size", y_name = "FPDR",
@@ -378,46 +212,18 @@ tbl_allsel %>%
                    )) 
 ```
 
-### a=1 
-```{r}
-tbl_allsel %>%
-  dplyr::select(a, n, p, epsstd, model, penalty, FPDR) %>%
-  filter(penalty %in% c("combined", "-") & a==1) %>%
-  mutate(n = to_factor(n)) %>%
-  arrange(model, penalty) %>%
-  pivot_wider(id_cols = c(n, p, epsstd), values_from = FPDR, names_from = model) %>%
-  nested_loop_plot(x = "n", steps = "epsstd", grid_cols ="p" ,
-                   steps_y_base = 0, steps_y_height = 0.05,
-                   steps_names = "Residual variance",
-                   x_name = "Sample size", y_name = "FPDR",
-                   spu_x_shift = 1.5,
-                   grid_scales="free_y",
-                   colors = ggcols,
-                   steps_values_annotate = TRUE, steps_annotation_size = 3,
-                   hline_intercept = 0,
-                   y_expand_add = c(0.1, 0.25),
-                   post_processing = list(
-                       add_custom_theme = list(
-                         text=element_text(size=14),
-                           axis.text.x = element_text(size = 14,
-                                                      angle = -90,
-                                                      vjust = 0.5))
-                   )) 
-```
-:::
 
 ## True discovery rate
 
-::: panel-tabset
-### a=.2165
+
 ```{r}
 tbl_allsel %>%
-  dplyr::select(a, n, p, epsstd, model, penalty, TPDR) %>%
-  filter(penalty %in% c("combined", "-") & a==.2165) %>%
+  dplyr::select(scenario, a, n, p, epslvl, model, penalty, TPDR) %>%
+  filter(scenario %in% "B" & penalty %in% c("combined", "-")) %>%
   mutate(n = to_factor(n)) %>%
   arrange(model, penalty) %>%
-  pivot_wider(id_cols = c(n, p, epsstd), values_from = TPDR, names_from = model) %>%
-  nested_loop_plot(x = "n", steps = "epsstd", grid_cols ="p" ,
+  pivot_wider(id_cols = c(a, n, p, epslvl), values_from = TPDR, names_from = model) %>%
+  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="p" , grid_rows = "a",
                    steps_y_base = 0, steps_y_height = 0.05,
                    steps_names = "Residual variance",
                    x_name = "Sample size", y_name = "TPDR",
@@ -436,57 +242,3 @@ tbl_allsel %>%
                    )) 
 ```
 
-### a=.28
-```{r}
-tbl_allsel %>%
-  dplyr::select(a, n, p, epsstd, model, penalty, TPDR) %>%
-  filter(penalty %in% c("combined", "-") & a==.28) %>%
-  mutate(n = to_factor(n)) %>%
-  arrange(model, penalty) %>%
-  pivot_wider(id_cols = c(n, p, epsstd), values_from = TPDR, names_from = model) %>%
-  nested_loop_plot(x = "n", steps = "epsstd", grid_cols ="p" ,
-                   steps_y_base = 0, steps_y_height = 0.05,
-                   steps_names = "Residual variance",
-                   x_name = "Sample size", y_name = "TPDR",
-                   spu_x_shift = 1.5,
-                   grid_scales="free_y",
-                   colors = ggcols,
-                   steps_values_annotate = TRUE, steps_annotation_size = 3,
-                   hline_intercept = 0,
-                   y_expand_add = c(0.1, 0.25),
-                   post_processing = list(
-                       add_custom_theme = list(
-                         text=element_text(size=14),
-                           axis.text.x = element_text(size = 14,
-                                                      angle = -90,
-                                                      vjust = 0.5))
-                   )) 
-```
-
-### a=1
-```{r}
-tbl_allsel %>%
-  dplyr::select(a, n, p, epsstd, model, penalty, TPDR) %>%
-  filter(penalty %in% c("combined", "-") & a==1) %>%
-  mutate(n = to_factor(n)) %>%
-  arrange(model, penalty) %>%
-  pivot_wider(id_cols = c(n, p, epsstd), values_from = TPDR, names_from = model) %>%
-  nested_loop_plot(x = "n", steps = "epsstd", grid_cols ="p" ,
-                   steps_y_base = 0, steps_y_height = 0.05,
-                   steps_names = "Residual variance",
-                   x_name = "Sample size", y_name = "TPDR",
-                   spu_x_shift = 1.5,
-                   grid_scales="free_y",
-                   colors = ggcols,
-                   steps_values_annotate = TRUE, steps_annotation_size = 3,
-                   hline_intercept = 0,
-                   y_expand_add = c(0.1, 0.25),
-                   post_processing = list(
-                       add_custom_theme = list(
-                         text=element_text(size=14),
-                           axis.text.x = element_text(size = 14,
-                                                      angle = -90,
-                                                      vjust = 0.5))
-                   )) 
-```
-:::
