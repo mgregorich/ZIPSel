@@ -13,17 +13,17 @@ simulate_scenario <- function(scn, dsgn){
   # nr=1; scn=scenarios[nr,]; dsgn=sim_design[[scenarios[nr,]$dsgn]]
   
   filename <- paste0("sim_i", scn$iter, "_scn", scn$scenario, "_n", scn$n, "_p", scn$p, "_beta", scn$beta_max, "_a", scn$a, 
-                     "_eps", scn$epslvl, "_propzi", scn$propzi, "_struczero", scn$struczero, ".rds")
+                     "_eps", scn$epslvl, "_propzi", scn$propzi, "_revzi", tolower(scn$revzi), "_struczero", scn$struczero, ".rds")
 
   # Generate large validation dataset
   data.val <- data_generation(dsgn = dsgn, scenario = scn$scenario, n = 100000, p=scn$p, beta_max = scn$beta_max, a = scn$a, epsstd = scn$epsstd, 
-                              propzi = scn$propzi, struczero = scn$struczero)
+                              propzi = scn$propzi, revzi = scn$revzi, struczero = scn$struczero)
   data.val <- generate_dataobj(y = data.val$data_ana$y, x = data.val$data_ana$x, clinical = NULL)
   
   # Run replications
   scn_res <-  lapply(1:scn$iter, function(x){
     data_iter <- data_generation(dsgn = dsgn, scenario = scn$scenario, n = scn$n, p = scn$p, beta_max = scn$beta_max, a = scn$a, epsstd = scn$epsstd, 
-                                 propzi=scn$propzi, struczero=scn$struczero)
+                                 propzi=scn$propzi, revzi = scn$revzi, struczero=scn$struczero)
     res_iter <-  data_analysis(df = data_iter, data.val = data.val, n = scn$n, p = scn$p, 
                                ncv = 10, nR = 2, nlams = 10)
     data_iter <- mapply(cbind, data_iter, "i" = x, SIMPLIFY = F)
@@ -41,7 +41,7 @@ simulate_scenario <- function(scn, dsgn){
 
 
 # ============================ Data generation =================================
-data_generation <- function(dsgn, scenario, n, p, beta_max, a, epsstd, propzi, struczero){
+data_generation <- function(dsgn, scenario, n, p, beta_max, a, epsstd, propzi, revzi, struczero){
   
   # # Remove later (parameter input for function)
   # dsgn=dsgn; scenario = scn$scenario; n=100000; p=scn$p; ngroups=scn$ngroups; a=scn$a; epsstd=scn$epsstd;
@@ -54,7 +54,9 @@ data_generation <- function(dsgn, scenario, n, p, beta_max, a, epsstd, propzi, s
   data_logvars <- simulate_data(dsgn, n)
 
   # Structural zeros for outcome generation
-  seq_propzi <- rep(seq(0,propzi, length.out = p/ngroups), ngroups)
+  groupzi <- seq(0,propzi, length.out = p/ngroups)
+  if(revzi){groupzi <- rev(groupzi)}
+  seq_propzi <- rep(groupzi, ngroups)
   seq_strucz <- seq_propzi * struczero
 
   D_struc <- as.matrix(sapply(1-seq_strucz, function(x) rbinom(n, size = 1, prob = x))) # per group linear increase in zero-inflation 0-80%
@@ -113,7 +115,7 @@ data_generation <- function(dsgn, scenario, n, p, beta_max, a, epsstd, propzi, s
 
 
 # ============================ Data analysis =================================
-data_analysis <- function(df, data.val, n, p, ncv=10, nR=2, nlams=10, pflist=list(c(1,2), c(2,1), c(1,3))){
+data_analysis <- function(df, data.val, n, p, ncv=10, nR=10, nlams=100, pflist=list(c(1,2), c(2,1), c(1,3))){
   
   # Remove later
   # df = data_iter
@@ -133,7 +135,7 @@ data_analysis <- function(df, data.val, n, p, ncv=10, nR=2, nlams=10, pflist=lis
   methnames <- c("oracle", "lasso", "ridge", "lasso-ridge", "ridge-lasso", "ridge-garrote", "random forest")
   tbl_perf <- data.frame("model" = methnames,
                          "penalty" = c("-",rep(c("combined"), times = 5), "-"),
-                         R2 = NA, RMSE = NA, MAE = NA, C = NA, CS = NA)
+                         R2 = NA, RMSPE = NA, MAE = NA, C = NA, CS = NA)
   tbl_coef <- cbind.data.frame("var"=paste0("V", 1:nrow(df$true_coef)), df$true_coef)
   
   # --- Oracle
@@ -194,6 +196,7 @@ data_analysis <- function(df, data.val, n, p, ncv=10, nR=2, nlams=10, pflist=lis
   fit.rf <- ranger(y~., data = train, num.trees = 1000)
   data.val$pred.rf <- predict(fit.rf, data = data.val$x)$predictions
   tbl_perf[7, 3:7] <- eval_performance(pred = data.val$pred.rf , obs = data.val$y)
+  tbl_perf$relRMSPE <- tbl_perf$RMSPE/min(tbl_perf$RMSPE)
   
   # Merge results
   # Variable selection
@@ -241,8 +244,10 @@ summarize_scenario <- function(filename, scn, scn_res){
   tbl_performance <- tbl_iters_performance %>%
     data.frame() %>%
     group_by(model, penalty) %>%
-    summarise("RMSE.est" = mean(RMSE, na.rm = T), "RMSE.med" = median(RMSE, na.rm = T), 
-              "RMSE.lo" = quantile(RMSE, 0.05, na.rm = T), "RMSE.up" = quantile(RMSE, 0.95, na.rm = T),
+    summarise("RMSPE.est" = mean(RMSPE, na.rm = T), "RMSPE.med" = median(RMSPE, na.rm = T), 
+              "RMSPE.lo" = quantile(RMSPE, 0.05, na.rm = T), "RMSPE.up" = quantile(RMSPE, 0.95, na.rm = T),
+              "relRMSPE.est" = mean(relRMSPE, na.rm = T), "relRMSPE.med" = median(relRMSPE, na.rm = T), 
+              "relRMSPE.lo" = quantile(relRMSPE, 0.05, na.rm = T), "relRMSPE.up" = quantile(relRMSPE, 0.95, na.rm = T),
               "R2.est" = mean(R2, na.rm = T), "R2.med" = median(R2, na.rm = T),
               "R2.lo" = quantile(R2, 0.05, na.rm = T), "R2.up" = quantile(R2, 0.95, na.rm = T),
               "CS.est" = mean(CS, na.rm = T), "CS.med" = median(CS, na.rm = T),
@@ -257,8 +262,10 @@ summarize_scenario <- function(filename, scn, scn_res){
   
   tbl_varsel <- tbl_iters_varsel %>% 
     group_by(model, penalty, varname) %>% 
-    summarise("truepos_var" = sum(truepos_var)/niter, "trueneg_var" = sum(trueneg_var)/niter,
-              "falsepos_var" = sum(falsepos_var)/niter, "falseneg_var" = sum(falseneg_var)/niter) %>%
+    summarise("truepos_var" = sum(truepos_var)/niter, 
+              "trueneg_var" = sum(trueneg_var)/niter,
+              "falsepos_var" = sum(falsepos_var)/niter, 
+              "falseneg_var" = sum(falseneg_var)/niter) %>%
     data.frame() %>%
     arrange(varname) %>%
     merge(scn, . )
@@ -266,15 +273,19 @@ summarize_scenario <- function(filename, scn, scn_res){
   tbl_groupsel <- tbl_iters_groupsel %>% 
     group_by(model, penalty, group) %>% 
     summarise("truepos_any" = sum(truepos_any)/niter, 
-              "truepos_group" = sum(truepos_group)/niter, "trueneg_group" = sum(trueneg_group)/niter,
-              "falsepos_group" = sum(falsepos_group)/niter, "falseneg_group" = sum(falseneg_group)/niter) %>%
+              "truepos_group" = sum(truepos_group)/niter, 
+              "trueneg_group" = sum(trueneg_group)/niter,
+              "falsepos_group" = sum(falsepos_group)/niter, 
+              "falseneg_group" = sum(falseneg_group)/niter) %>%
     data.frame()  %>%
     merge(scn, . )
   
   tbl_allsel <- tbl_iters_allsel %>% 
     group_by(model, penalty) %>% 
-    summarise("FPDR" = sum(FPDR)/niter, "FNDR" = sum(FNDR)/niter,
-              "TPDR" = sum(TPDR)/niter, "TNDR" = sum(TNDR)/niter) %>%
+    summarise("FPDR" = sum(FPDR)/niter, 
+              "FNDR" = sum(FNDR)/niter,
+              "TPDR" = sum(TPDR)/niter, 
+              "TNDR" = sum(TNDR)/niter) %>%
     data.frame()  %>%
     merge(scn, . )
   

@@ -10,12 +10,13 @@ set.seed(666)
 iter <- 2
 regenerate_simdata <- FALSE
 
-n <- c(100,200,400)         # sample size
-p <- c(200,400)             # number of candidate predictors
+n <- c(100, 200, 400)         # sample size
+p <- c(200, 400)             # number of candidate predictors
 beta_max <- 5                              # maximum coefficient
 a <- c(0.2165, 0.28, 1)                    # medium balance of U and D influence on y
 epsstd <- c(0, 1, 2)
-propzi <- c(0.25, 0.5, 0.75)         
+propzi <- c(0.25, 0.5, 0.75) 
+revzi <- c(FALSE, TRUE)
 struczero <- c(0.33, 0.66)
 scenario <- c("A", "B")
 
@@ -31,6 +32,7 @@ scenarios <- expand.grid(
   a = a,
   epsstd = epsstd,
   propzi = propzi,
+  revzi = revzi, 
   struczero = struczero) %>%
   merge(., tbl_simdata, by=c("p")) %>%
   relocate(p, .after=n)  %>% 

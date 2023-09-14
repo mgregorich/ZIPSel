@@ -22,15 +22,15 @@ sim_design <- setup[[2]]
 
 # --- Determine optimal residual variance to achieve R2: 0.2 and 0.5
 scenarios <- scenarios %>% 
-  filter(epslvl != "none") %>%
+  filter(epslvl != "none" & revzi == TRUE) %>%
   arrange(p, a, epsstd) 
 scenarios$R2 <- scenarios$adjR2 <- NA
-for(i in 1: nrow(scenarios)){
+for(i in 1: 30){
   print(i)
   scn = scenarios[i,]
   dsgn = sim_design[[scenarios[i,]$dsgn]]
   data.val <- data_generation(dsgn = dsgn, scenario = scn$scenario, n = 100000, p=scn$p, beta_max = scn$beta_max, a = scn$a, epsstd = scn$epsstd, 
-                              prop.nonzero = scn$prop.nonzero, sampthresh = scn$sampthresh)
+                              propzi = scn$propzi, revzi = scn$revzi, struczero = scn$struczero)
   
   # R2
   y_noisy <- data.val$data_gen$y
