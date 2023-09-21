@@ -68,6 +68,22 @@ generate_simdesign <- function(p, xmean=0, xstd=0.5, ngroups=4){
   return(dsgn)
 }
 
+find_apar <- function(scn, dsgn){
+    data.tmp <- data_generation(dsgn = dsgn, scenario = scn$scenario, n = scn$n, p=scn$p, beta_max = scn$beta_max, a = scn$a, epsstd = scn$epsstd, 
+                                propzi = scn$propzi, revzi = scn$revzi, struczero = scn$struczero)
+    
+    Xb <- data.val$data_gen$X_true %*% data.val$true_coef$beta_X
+    Db <- data.val$data_gen$D_struc %*% data.val$true_coef$beta_D
+
+    a_U2D <- (4 - sqrt(8*(var(Xb) / var(Db)))) / (2*(2 - var(Xb) / var(Db)))
+    a_UD <- (2 - sqrt(4*(var(Xb) / var(Db)))) / (2*(1 - var(Xb) / var(Db)))
+    a <- ifelse(scn$UDdepen %in% "U=2D", a_U2D, a_UD)
+    a <- ifelse(scn$UDdepen %in% "U", 1, a)
+    return(a)  
+}
+
+
+
 adjusted_R2 <- function(pred, obs, N, k){
   r2 <- cor(pred,obs, use="pairwise.complete.obs")^2
   r2 <- 1-(((1-r2)*(N-1))/(N-k-1))
@@ -530,6 +546,7 @@ perform_penreg <- function(data.obj, penalties = 1, family = "gaussian", penalty
   if(all(alpha1 != c(0, 1))){ stop("alpha1 needs to be 0 or 1.") }
  
    # Preliminaries
+  glmnet.control(devmax = 1, fdev = 1e-6) # for R2=1 scenario
   x <- data.obj[["x"]]
   u <- data.obj[["u"]]
   d <- data.obj[["d"]]
@@ -574,7 +591,6 @@ perform_penreg <- function(data.obj, penalties = 1, family = "gaussian", penalty
     for(outer in 1:R){
       set.seed(outer)
       # CV model with offset
-      glmnet.control(devmax = 1) # for R2=1 scenario
       cv_model <- cv.glmnet(x = varmat, y = y, alpha = alpha1, standardize = FALSE,
                             offset = clin_offset, penalty.factor = pfvector, nfolds = cv, nlambda = nl1)
       cvmerror[outer, ] <- cv_model$cvm
@@ -635,9 +651,9 @@ predict_penreg <- function(obj, newdata, type = "link", model = "ridge"){
 
 perform_lridge <- function(data.obj, family = "gaussian", nlambda = c(10,10), cv = 10, R = 2, alpha1 = 1, alpha2 = 0, 
                            penalty = "combined", pflist = NULL, split_vars = FALSE){
-# 
-#   data.obj = data.obj; family = "gaussian"; nlambda = c(10,10); cv = 10; R = 1; alpha1 = 1; alpha2 = 0;
-#   pflist = NULL; penalty = "combined"; split_vars = TRUE
+
+  # data.obj = data.obj; family = "gaussian"; nlambda = c(50,50); cv = 10; R = 10; alpha1 = 1; alpha2 = 0;
+  # pflist = NULL; penalty = "combined"; split_vars = TRUE
   
   # Check for misspecifications
   if(all(penalty != c("combined", "component"))){ stop("Penalty must be 'combined' or 'component'.") }
@@ -647,6 +663,7 @@ perform_lridge <- function(data.obj, family = "gaussian", nlambda = c(10,10), cv
   }else if(penalty == "combined" & !split_vars){pflist <- list(c(1))}
   
   # Preliminaries
+  glmnet.control(devmax = 1, fdev = 1e-6) # for R2=1 scenario
   x <- data.obj[["x"]]
   u <- data.obj[["u"]]
   d <- data.obj[["d"]]
@@ -855,8 +872,9 @@ perform_rlasso <- function(data.obj, family = "gaussian", nlambda = c(10, 10), c
   if(!split_vars & penalty=="component"){ stop("Component-specific penalty only valid for split variable.") }
   if(penalty == "combined" & split_vars){ pflist <- list(c(1, 1))
   }else if(penalty == "combined" & !split_vars){pflist <- list(c(1))}
-  glmnet.control(devmax = 1) # for R2=1 scenario
-  
+
+  # Preliminaries
+  glmnet.control(devmax = 1, fdev = 1e-6) # for R2=1 scenario
   x <- data.obj[["x"]]
   u <- data.obj[["u"]]
   d <- data.obj[["d"]]
@@ -1068,6 +1086,7 @@ perform_rgarrote <- function(data.obj, family = "gaussian", nlambda = c(10,10), 
   }else if(penalty == "combined" & !split_vars){pflist <- list(c(1))}
   
   # Preliminaries
+  glmnet.control(devmax = 1, fdev = 1e-6) # for R2=1 scenario
   alpha2 = 1
   x <- data.obj[["x"]]
   u <- data.obj[["u"]]

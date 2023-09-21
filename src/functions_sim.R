@@ -25,7 +25,7 @@ simulate_scenario <- function(scn, dsgn){
     data_iter <- data_generation(dsgn = dsgn, scenario = scn$scenario, n = scn$n, p = scn$p, beta_max = scn$beta_max, a = scn$a, epsstd = scn$epsstd, 
                                  propzi=scn$propzi, revzi = scn$revzi, struczero=scn$struczero)
     res_iter <-  data_analysis(df = data_iter, data.val = data.val, n = scn$n, p = scn$p, 
-                               ncv = 10, nR = 2, nlams = 10)
+                               ncv = 10, nR = 10, nlams = 25)
     data_iter <- mapply(cbind, data_iter, "i" = x, SIMPLIFY = F)
     res_iter <- mapply(cbind, res_iter, "i" = x, SIMPLIFY = F)
     
@@ -105,7 +105,7 @@ data_generation <- function(dsgn, scenario, n, p, beta_max, a, epsstd, propzi, r
   # plot(x=1:ncol(Xs), sort(apply(Xs,2, function(x) sum(x==0)/length(x))))
   
   out <- list("data_ana" = list("y" = y, "x" = Xs),
-              "data_gen" = data.frame("y" = y, "X_true" = X, "D_struc" = D_struc, "D_samp" = D_samp,"eps" = eps),
+              "data_gen" = list("y" = y, "X_true" = X, "D_struc" = D_struc, "D_samp" = D_samp,"eps" = eps),
               "true_coef" = data.frame("beta_X" = beta_X, "beta_D" = beta_D),
               "info_zi" = data.frame("vind" = 1:length(seq_propzi), "propzi" = seq_propzi, "struczi" = seq_strucz, "samplzi" = seq_sampz))
   return(out)
@@ -115,7 +115,7 @@ data_generation <- function(dsgn, scenario, n, p, beta_max, a, epsstd, propzi, r
 
 
 # ============================ Data analysis =================================
-data_analysis <- function(df, data.val, n, p, ncv=10, nR=10, nlams=100, pflist=list(c(1,2), c(2,1), c(1,3))){
+data_analysis <- function(df, data.val, n, p, ncv, nR, nlams, pflist=list(c(1,2), c(2,1), c(1,3))){
   
   # Remove later
   # df = data_iter
@@ -123,7 +123,7 @@ data_analysis <- function(df, data.val, n, p, ncv=10, nR=10, nlams=100, pflist=l
   # n=scn$n
   # p=scn$p
   # ngroups=scn$ngroups
-  # ncv=10; nR=2; nlams=10; pflist=list(c(1,2), c(2,1), c(1,3))
+  # ncv=10; nR=10; nlams=25; pflist=list(c(1,2), c(2,1), c(1,3))
 
   # Parameter
   ngroups = 4
@@ -193,8 +193,8 @@ data_analysis <- function(df, data.val, n, p, ncv=10, nR=10, nlams=100, pflist=l
   
   # --- Random forest
   train <- data.frame(y = data.obj$y, data.obj$x)
-  fit.rf <- ranger(y~., data = train, num.trees = 1000)
-  data.val$pred.rf <- predict(fit.rf, data = data.val$x)$predictions
+  fit.rf <- ranger(y~., data = train, num.trees = 500, num.threads = 1)
+  data.val$pred.rf <- predict(fit.rf, data = data.val$x, num.threads = 1)$predictions
   tbl_perf[7, 3:7] <- eval_performance(pred = data.val$pred.rf , obs = data.val$y)
   tbl_perf$relRMSPE <- tbl_perf$RMSPE/min(tbl_perf$RMSPE)
   
@@ -321,7 +321,10 @@ evaluate_scenarios <- function(sim.files, sim.path){
   tbl_estcoef <- do.call(rbind, lapply(res, function(x) x$coef$estcoef))
 
   # Results per iteration
-  tbl_res <- list("performance"=list("tbl_perf"=tbl_perf, "tbl_varsel"=tbl_varsel, "tbl_groupsel"=tbl_groupsel, "tbl_allsel"=tbl_allsel), 
+  tbl_res <- list("performance"=list("tbl_perf"=tbl_perf, 
+                                     "tbl_varsel"=tbl_varsel, 
+                                     "tbl_groupsel"=tbl_groupsel, 
+                                     "tbl_allsel"=tbl_allsel), 
                   "iters" = list("tbl_iters_perf"=tbl_iters_perf, "tbl_iters_varsel"=tbl_iters_varsel, 
                                  "tbl_iters_groupsel"=tbl_iters_groupsel, "tbl_iters_allsel"=tbl_iters_allsel),
                   "coef" = tbl_estcoef)

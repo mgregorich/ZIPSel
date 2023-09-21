@@ -7,6 +7,7 @@
 rm(list=ls())
 
 # Packages
+#devtools::install_github("matherealize/simdata", ref="fix_missing_colapply")
 pacman::p_load(ggplot2, parallel, future.apply, stringr, kableExtra,
                openxlsx, dplyr, tidyverse, tableone, concreg, Matrix,
                glmnet, MASS, ranger, simdata)
@@ -34,7 +35,7 @@ sim_design <- setup[[2]]
 # ======================= Simulation ===========================================
 
 # --- Run through all scenarios
-plan(multisession, workers = detectCores()*.25)
+plan(multisession, workers = floor(detectCores()*0.25))
 invisible(future_lapply(1:nrow(scenarios), function(k) {
   tryCatch({simulate_scenario(scn=scenarios[k,], dsgn=sim_design[[scenarios[k,]$dsgn]])
   }, error = function(e) {

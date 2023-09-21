@@ -83,8 +83,9 @@ pc1
 
 ```{r}
 # Data generation
-data_sim <- data_generation(dsgn=dsgn, scenario = scn$scenario, n=scn$n, p=scn$p, beta_max = scn$beta_max, a = scn$a, epsstd = scn$epsstd,
-                                prop.nonzero = scn$prop.nonzero, sampthresh = scn$sampthresh)
+data_sim <- data_generation(dsgn = dsgn, scenario = scn$scenario, n = scn$n, p=scn$p, beta_max = scn$beta_max, a = scn$a, 
+                            epsstd = scn$epsstd, 
+                              propzi = scn$propzi, revzi = scn$revzi, struczero = scn$struczero)
 ```
 
 ```{r}
@@ -99,6 +100,7 @@ data_sim$data_ana$x %>%
   mutate(ID=1:nrow(.)) %>%
   pivot_longer(cols=!ID, values_to="Values", names_to="Variable") %>%
   mutate_at(vars(Values), as.numeric) %>%
+  filter(Values >0) %>%
   ggplot(aes(x=Values, group=ID, col=ID)) +
   geom_density() +
   scale_x_continuous("Value") +

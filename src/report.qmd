@@ -35,7 +35,7 @@ pacman::p_load(ggplot2, parallel, future.apply, stringr, kableExtra,
 
 # Paths
 out.path <- "output"
-sim.date <- "2023-09-13"
+sim.date <- "2023-09-14"
 sim.file <- paste0("sim_", sim.date,"/")
 sim.path <- here::here(out.path, sim.file)
 ggcols <- c("black", "grey45","goldenrod3", "deepskyblue3", "royalblue3", "darkred", "seagreen4")
@@ -62,13 +62,13 @@ tbl_groupsel <- tbl_res$performance$tbl_groupsel
 ## ZI: low
 ```{r}
 tbl_perf %>%
-  dplyr::select(scenario, a, n, p, epslvl, propzi, struczero, model, penalty, RMSE.est) %>%
-  filter(scenario %in% "A" & penalty %in% c("combined", "-") & propzi == 0.75 & struczero == 0.33 & model != "oracle") %>%
+  dplyr::select(scenario, a, n, p, epslvl, propzi, struczero, revzi, model, penalty, RMSPE.est) %>%
+  filter(scenario %in% "A" & penalty %in% c("combined", "-") & propzi == 0.75 & struczero == 0.33 & revzi == TRUE & model != "oracle") %>%
   mutate(n = to_factor(n)) %>%
   arrange(model, penalty) %>%
-  pivot_wider(id_cols = c(a, n, p, epslvl), values_from = RMSE.est, names_from = model) %>%
-  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="p" ,
-                   steps_y_base = -2, steps_y_height = 0.5, grid_rows = "a",
+  pivot_wider(id_cols = c(a, n, p, epslvl), values_from = RMSPE.est, names_from = model) %>%
+  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="a" ,
+                   steps_y_base = -2, steps_y_height = 0.5, grid_rows = "p",
                    steps_names = "Residual variance",
                    x_name = "Sample size", y_name = "Averaged RMSPE",
                    spu_x_shift = 1.5,
@@ -89,13 +89,13 @@ tbl_perf %>%
 
 ```{r}
 tbl_perf %>%
-  dplyr::select(scenario, a, n, p, epslvl, propzi, struczero, model, penalty, R2.est) %>%
-  filter(scenario %in% "A" & penalty %in% c("combined", "-") & propzi == 0.25 & struczero == 0.33) %>%
+  dplyr::select(scenario, a, n, p, epslvl, propzi, struczero, revzi, model, penalty, R2.est) %>%
+  filter(scenario %in% "A" & penalty %in% c("combined", "-") & propzi == 0.25 & struczero == 0.33 & revzi == FALSE & model != "oracle") %>%
   mutate(n = to_factor(n)) %>%
   arrange(model, penalty) %>%
   pivot_wider(id_cols = c(a, n, p, epslvl), values_from = R2.est, names_from = model) %>%
-  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="p" ,
-                   steps_y_base = -0.05, steps_y_height = 0.05, grid_rows = "a",
+  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="a" ,
+                   steps_y_base = -0.05, steps_y_height = 0.05, grid_rows = "p",
                    steps_names = "Residual variance",
                    x_name = "Sample size", y_name = "Averaged R2",
                    spu_x_shift = 1.5,
@@ -114,13 +114,13 @@ tbl_perf %>%
 
 ```{r}
 tbl_perf %>%
-  dplyr::select(scenario, a, n, p, epslvl, propzi, struczero, model, penalty, CS.est) %>%
-  filter(scenario %in% "A" & penalty %in% c("combined", "-") & propzi == 0.25 & struczero == 0.33) %>%
+  dplyr::select(scenario, a, n, p, epslvl, propzi, struczero, revzi, model, penalty, CS.est) %>%
+  filter(scenario %in% "A" & penalty %in% c("combined", "-") & propzi == 0.25 & struczero == 0.33 & revzi == FALSE) %>%
   mutate(n = to_factor(n)) %>%
   arrange(model, penalty) %>%
   pivot_wider(id_cols = c(a, n, p, epslvl), values_from = CS.est, names_from = model) %>%
-  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="p" ,
-                   steps_y_base = 0, steps_y_height = 0.05, grid_rows = "a",
+  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="a" ,
+                   steps_y_base = 0, steps_y_height = 0.05, grid_rows = "p",
                    steps_names = "Residual variance",
                    x_name = "Sample size", y_name = "Averaged CS",
                    spu_x_shift = 1.5,
@@ -140,13 +140,13 @@ tbl_perf %>%
 ## ZI: moderate
 ```{r}
 tbl_perf %>%
-  dplyr::select(scenario, a, n, p, epslvl, propzi, struczero, model, penalty, RMSE.est) %>%
-  filter(scenario %in% "A" & penalty %in% c("combined", "-") & propzi == 0.5 & struczero == 0.33 & model != "oracle") %>%
+  dplyr::select(scenario, a, n, p, epslvl, propzi, struczero, revzi, model, penalty, RMSPE.est) %>%
+  filter(scenario %in% "A" & penalty %in% c("combined", "-") & propzi == 0.5 & struczero == 0.33 & revzi == FALSE & model != "oracle") %>%
   mutate(n = to_factor(n)) %>%
   arrange(model, penalty) %>%
-  pivot_wider(id_cols = c(a, n, p, epslvl), values_from = RMSE.est, names_from = model) %>%
-  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="p" ,
-                   steps_y_base = -2, steps_y_height = 0.5, grid_rows = "a",
+  pivot_wider(id_cols = c(a, n, p, epslvl), values_from = RMSPE.est, names_from = model) %>%
+  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="a" ,
+                   steps_y_base = -2, steps_y_height = 0.5, grid_rows = "p",
                    steps_names = "Residual variance",
                    x_name = "Sample size", y_name = "Averaged RMSPE",
                    spu_x_shift = 1.5,
@@ -165,13 +165,13 @@ tbl_perf %>%
 
 ```{r}
 tbl_perf %>%
-  dplyr::select(scenario, a, n, p, epslvl, propzi, struczero, model, penalty, R2.est) %>%
-  filter(scenario %in% "A" & penalty %in% c("combined", "-") & propzi == 0.5 & struczero == 0.33) %>%
+  dplyr::select(scenario, a, n, p, epslvl, propzi, struczero, revzi, model, penalty, R2.est) %>%
+  filter(scenario %in% "A" & penalty %in% c("combined", "-") & propzi == 0.5 & struczero == 0.33 & revzi == FALSE) %>%
   mutate(n = to_factor(n)) %>%
   arrange(model, penalty) %>%
   pivot_wider(id_cols = c(a, n, p, epslvl), values_from = R2.est, names_from = model) %>%
-  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="p" ,
-                   steps_y_base = -0.05, steps_y_height = 0.05, grid_rows = "a",
+  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="a" ,
+                   steps_y_base = -0.05, steps_y_height = 0.05, grid_rows = "p",
                    steps_names = "Residual variance",
                    x_name = "Sample size", y_name = "Averaged R2",
                    spu_x_shift = 1.5,
@@ -190,13 +190,13 @@ tbl_perf %>%
 
 ```{r}
 tbl_perf %>%
-  dplyr::select(scenario, a, n, p, epslvl, propzi, struczero, model, penalty, CS.est) %>%
-  filter(scenario %in% "A" & penalty %in% c("combined", "-") & propzi == 0.5 & struczero == 0.33) %>%
+  dplyr::select(scenario, a, n, p, epslvl, propzi, struczero, revzi, model, penalty, CS.est) %>%
+  filter(scenario %in% "A" & penalty %in% c("combined", "-") & propzi == 0.5 & struczero == 0.33 & revzi == FALSE & model != "oracle") %>%
   mutate(n = to_factor(n)) %>%
   arrange(model, penalty) %>%
   pivot_wider(id_cols = c(a, n, p, epslvl), values_from = CS.est, names_from = model) %>%
-  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="p" ,
-                   steps_y_base = 0, steps_y_height = 0.05, grid_rows = "a",
+  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="a" ,
+                   steps_y_base = 0, steps_y_height = 0.05, grid_rows = "p",
                    steps_names = "Residual variance",
                    x_name = "Sample size", y_name = "Averaged CS",
                    spu_x_shift = 1.5,
@@ -217,13 +217,13 @@ tbl_perf %>%
 ## ZI: high
 ```{r}
 tbl_perf %>%
-  dplyr::select(scenario, a, n, p, epslvl, propzi, struczero, model, penalty, RMSE.est) %>%
-  filter(scenario %in% "A" & penalty %in% c("combined", "-") & propzi == 0.75 & struczero == 0.33 & model != "oracle") %>%
+  dplyr::select(scenario, a, n, p, epslvl, propzi, struczero, revzi, model, penalty, RMSPE.est) %>%
+  filter(scenario %in% "A" & penalty %in% c("combined", "-") & propzi == 0.75 & struczero == 0.33 & revzi == FALSE & model != "oracle") %>%
   mutate(n = to_factor(n)) %>%
   arrange(model, penalty) %>%
-  pivot_wider(id_cols = c(a, n, p, epslvl), values_from = RMSE.est, names_from = model) %>%
-  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="p" ,
-                   steps_y_base = -2, steps_y_height = 0.5, grid_rows = "a",
+  pivot_wider(id_cols = c(a, n, p, epslvl), values_from = RMSPE.est, names_from = model) %>%
+  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="a" ,
+                   steps_y_base = -2, steps_y_height = 0.5, grid_rows = "p",
                    steps_names = "Residual variance",
                    x_name = "Sample size", y_name = "Averaged RMSPE",
                    spu_x_shift = 1.5,
@@ -242,13 +242,13 @@ tbl_perf %>%
 
 ```{r}
 tbl_perf %>%
-  dplyr::select(scenario, a, n, p, epslvl, propzi, struczero, model, penalty, R2.est) %>%
-  filter(scenario %in% "A" & penalty %in% c("combined", "-") & propzi == 0.75 & struczero == 0.33) %>%
+  dplyr::select(scenario, a, n, p, epslvl, propzi, struczero, revzi, model, penalty, R2.est) %>%
+  filter(scenario %in% "A" & penalty %in% c("combined", "-") & propzi == 0.75 & struczero == 0.33 & revzi == FALSE & model != "oracle") %>%
   mutate(n = to_factor(n)) %>%
   arrange(model, penalty) %>%
   pivot_wider(id_cols = c(a, n, p, epslvl), values_from = R2.est, names_from = model) %>%
-  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="p" ,
-                   steps_y_base = -0.05, steps_y_height = 0.05, grid_rows = "a",
+  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="a" ,
+                   steps_y_base = -0.05, steps_y_height = 0.05, grid_rows = "p",
                    steps_names = "Residual variance",
                    x_name = "Sample size", y_name = "Averaged R2",
                    spu_x_shift = 1.5,
@@ -267,13 +267,13 @@ tbl_perf %>%
 
 ```{r}
 tbl_perf %>%
-  dplyr::select(scenario, a, n, p, epslvl, propzi, struczero, model, penalty, CS.est) %>%
-  filter(scenario %in% "A" & penalty %in% c("combined", "-") & propzi == 0.75 & struczero == 0.33) %>%
+  dplyr::select(scenario, a, n, p, epslvl, propzi, struczero, revzi, model, penalty, CS.est) %>%
+  filter(scenario %in% "A" & penalty %in% c("combined", "-") & propzi == 0.75 & struczero == 0.33 & revzi == FALSE ) %>%
   mutate(n = to_factor(n)) %>%
   arrange(model, penalty) %>%
   pivot_wider(id_cols = c(a, n, p, epslvl), values_from = CS.est, names_from = model) %>%
-  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="p" ,
-                   steps_y_base = 0, steps_y_height = 0.05, grid_rows = "a",
+  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="a" ,
+                   steps_y_base = 0, steps_y_height = 0.05, grid_rows = "p",
                    steps_names = "Residual variance",
                    x_name = "Sample size", y_name = "Averaged CS",
                    spu_x_shift = 1.5,
@@ -299,13 +299,13 @@ tbl_perf %>%
 ## ZI: low
 ```{r}
 tbl_perf %>%
-  dplyr::select(scenario, a, n, p, epslvl, propzi, struczero, model, penalty, RMSE.est) %>%
-  filter(scenario %in% "B" & penalty %in% c("combined", "-") & propzi == 0.25 & struczero == 0.33 & model != "oracle") %>%
+  dplyr::select(scenario, a, n, p, epslvl, propzi, struczero, revzi, model, penalty, RMSPE.est) %>%
+  filter(scenario %in% "B" & penalty %in% c("combined", "-") & propzi == 0.25 & struczero == 0.33 & revzi == FALSE & model != "oracle") %>%
   mutate(n = to_factor(n)) %>%
   arrange(model, penalty) %>%
-  pivot_wider(id_cols = c(a, n, p, epslvl), values_from = RMSE.est, names_from = model) %>%
-  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="p" ,
-                   steps_y_base = -2, steps_y_height = 0.5, grid_rows = "a",
+  pivot_wider(id_cols = c(a, n, p, epslvl), values_from = RMSPE.est, names_from = model) %>%
+  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="a" ,
+                   steps_y_base = -2, steps_y_height = 0.5, grid_rows = "p",
                    steps_names = "Residual variance",
                    x_name = "Sample size", y_name = "Averaged RMSPE",
                    spu_x_shift = 1.5,
@@ -375,11 +375,11 @@ tbl_perf %>%
 ## ZI: moderate
 ```{r}
 tbl_perf %>%
-  dplyr::select(scenario, a, n, p, epslvl, propzi, struczero, model, penalty, RMSE.est) %>%
+  dplyr::select(scenario, a, n, p, epslvl, propzi, struczero, model, penalty, RMSPE.est) %>%
   filter(scenario %in% "B" & penalty %in% c("combined", "-") & propzi == 0.5 & struczero == 0.33 & model != "oracle") %>%
   mutate(n = to_factor(n)) %>%
   arrange(model, penalty) %>%
-  pivot_wider(id_cols = c(a, n, p, epslvl), values_from = RMSE.est, names_from = model) %>%
+  pivot_wider(id_cols = c(a, n, p, epslvl), values_from = RMSPE.est, names_from = model) %>%
   nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="p" ,
                    steps_y_base = -2, steps_y_height = 0.5, grid_rows = "a",
                    steps_names = "Residual variance",
@@ -452,11 +452,11 @@ tbl_perf %>%
 ## ZI: high
 ```{r}
 tbl_perf %>%
-  dplyr::select(scenario, a, n, p, epslvl, propzi, struczero, model, penalty, RMSE.est) %>%
+  dplyr::select(scenario, a, n, p, epslvl, propzi, struczero, model, penalty, RMSPE.est) %>%
   filter(scenario %in% "B" & penalty %in% c("combined", "-") & propzi == 0.75 & struczero == 0.33 & model != "oracle") %>%
   mutate(n = to_factor(n)) %>%
   arrange(model, penalty) %>%
-  pivot_wider(id_cols = c(a, n, p, epslvl), values_from = RMSE.est, names_from = model) %>%
+  pivot_wider(id_cols = c(a, n, p, epslvl), values_from = RMSPE.est, names_from = model) %>%
   nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="p" ,
                    steps_y_base = -2, steps_y_height = 0.5, grid_rows = "a",
                    steps_names = "Residual variance",

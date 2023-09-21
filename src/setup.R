@@ -13,7 +13,7 @@ regenerate_simdata <- FALSE
 n <- c(100, 200, 400)         # sample size
 p <- c(200, 400)             # number of candidate predictors
 beta_max <- 5                              # maximum coefficient
-a <- c(0.2165, 0.28, 1)                    # medium balance of U and D influence on y
+UDdepen <- c("U", "U=2D", "U=D")                    # medium balance of U and D influence on y
 epsstd <- c(0, 1, 2)
 propzi <- c(0.25, 0.5, 0.75) 
 revzi <- c(FALSE, TRUE)
@@ -29,14 +29,15 @@ scenarios <- expand.grid(
   n = n,
   p = p,
   beta_max = beta_max,
-  a = a,
+  UDdepen = UDdepen,
   epsstd = epsstd,
   propzi = propzi,
   revzi = revzi, 
   struczero = struczero) %>%
   merge(., tbl_simdata, by=c("p")) %>%
   relocate(p, .after=n)  %>% 
-  mutate(epslvl = ifelse(epsstd == 0, "none", ifelse(epsstd == 1, "moderate", "high")),
+  mutate(a = ifelse(UDdepen %in% "U", 1, 0),
+         epslvl = ifelse(epsstd == 0, "none", ifelse(epsstd == 1, "moderate", "high")),
          epsstd = ifelse(scenario == "A" & p == 200 & a == .2165, epsstd * 5.5, epsstd),
          epsstd = ifelse(scenario == "A" & p == 200 & a == .28, epsstd * 6.5, epsstd),
          epsstd = ifelse(scenario == "A" & p == 200 & a == 1, epsstd * 20.25, epsstd),
@@ -49,8 +50,10 @@ scenarios <- expand.grid(
          epsstd = ifelse(scenario == "B" & p == 400 & a == .2165, epsstd * 4.725, epsstd),
          epsstd = ifelse(scenario == "B" & p == 400 & a == .28, epsstd * 5.35, epsstd),
          epsstd = ifelse(scenario == "B" & p == 400 & a == 1, epsstd * 15, epsstd),
-         beta_max = ifelse(scenario %in% "A", beta_max*0.4, beta_max)) %>% 
+         beta_max = ifelse(p == 400, beta_max *0.5, beta_max),
+         beta_max = ifelse(scenario %in% "A", beta_max * 0.2, beta_max)) %>% 
   relocate(epslvl, .before = epsstd) %>%
+  relocate(a, .after=UDdepen) %>%
   arrange(p, a, epslvl)
 
 
@@ -59,10 +62,36 @@ if(regenerate_simdata){
   plan(multisession, workers = length(p))
   list_design <- future_lapply(1:length(p), function(x) generate_simdesign(p = p[x]), future.seed = TRUE)
   names(list_design) <- paste0("dsgn_", 1:length(p))
-  plan(sequential)  
+  plan(sequential) 
+  
+  for(i in 1:nrow(scenarios)){
+    print(i)
+    scn = scenarios[i,]
+    dsgn = list_design[[scenarios[i,]$dsgn]]
+    
+    # Compute a
+    data.val <- data_generation(dsgn = dsgn, scenario = scn$scenario, n = 1000, p=scn$p, beta_max = scn$beta_max, a = scn$a, epsstd = scn$epsstd, 
+                                propzi = scn$propzi, revzi = scn$revzi, struczero = scn$struczero)
+    
+    Xb <- data.val$data_gen$X_true %*% data.val$true_coef$beta_X
+    Db <- data.val$data_gen$D_struc %*% data.val$true_coef$beta_D
+    
+    a_U2D <- (4 - sqrt(8*(var(Xb) / var(Db)))) / (2*(2 - var(Xb) / var(Db)))
+    a_UD <- (2 - sqrt(4*(var(Xb) / var(Db)))) / (2*(1 - var(Xb) / var(Db)))
+    scenarios[i,]$a <- ifelse(scn$UDdepen %in% "U", 1, ifelse(scn$UDdepen == "U=2D", a_U2D, a_UD))
+    scenarios[i,]$varXD <- var(scenarios[i,]$a*Xb)/var((1-scenarios[i,]$a)*Db)
+    
+    # Compute epsstd
+    data.val <- data_generation(dsgn = dsgn, scenario = scn$scenario, n = 100000, p=scn$p, beta_max = scn$beta_max, 
+                                a = scn$a, epsstd = scn$epsstd, 
+                                propzi = scn$propzi, revzi = scn$revzi, struczero = scn$struczero)
+  }
+  
 }else{
   list_design <- readRDS(here::here("src", "scenario_setup.rds"))$list_design
 }
+
+
 
 setup <- list("scenarios"=scenarios, "list_design"=list_design)
 saveRDS(setup, here::here("src", "scenario_setup.rds"))
