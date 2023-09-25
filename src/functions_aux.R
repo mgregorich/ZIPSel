@@ -37,6 +37,7 @@ partial <- function(f, ...) {
   }
 }
 
+
 # ========================== FIGURES ============================================================
 
 plot_calibration <- function(pred, obs, fig.title = ""){
@@ -1075,9 +1076,9 @@ predict_rlasso <- function(obj, newdata, type = "link", split_vars = TRUE){
 perform_rgarrote <- function(data.obj, family = "gaussian", nlambda = c(10,10), cv = 10, R = 2, alpha1 = 0, penalty="combined", 
                              pflist=NULL, split_vars = FALSE){
   # data.obj=data.obj; family="gaussian"; nlambda=c(10,10); cv=10; R=2; alpha1=0; alpha2=1; penalty="component"; pflist=list(c(1,2), c(2,1))
-  # data.obj=data.obj; family="gaussian"; nlambda=c(10,10); cv=10; R=2; alpha1=0; alpha2=1; penalty="combined";
-  # pflist=NULL; split_vars = FALSE
-  
+  # data.obj=data.obj; family="gaussian"; nlambda=c(100,100); cv=10; R=1; alpha1=0; alpha2=1; penalty="combined";
+  # pflist=NULL; split_vars = TRUE
+
   # Check for misspecifications
   if(all(penalty != c("combined", "component"))){ stop("Penalty must be 'combined' or 'component'.") }
   if(is.null(pflist) & penalty == "component"){ stop("pflist must be specified if penalty='component'!") }
@@ -1143,10 +1144,9 @@ perform_rgarrote <- function(data.obj, family = "gaussian", nlambda = c(10,10), 
         for(i in 2:nl1){
           # X garrote = X*beta_ridge
           beta.init <- coef(fit1.init)[-1, i]
-          B.ridge <- diag(beta.init)
-          XB.ridge <- var.train %*% B.ridge
-          varmat.gar <- XB.ridge[, seq(1, k, 1)]
-          if(split_vars){varmat.gar <- XB.ridge[, seq(1, k, 1)] +  XB.ridge[, seq(k + 1, 2*k,1)]}
+          XB.ridge <- sapply(1:ncol(var.train), function(j) var.train[,j] * beta.init[j], simplify = "matrix")
+          if(split_vars){varmat.gar <- XB.ridge[, seq(1, k, 1)] +  XB.ridge[, seq(k + 1, 2*k,1)]
+          }else{varmat.gar <- XB.ridge[, seq(1, k, 1)]}
           
           # Positive Lasso: lower.limits ensures positiveness of coeffs
           fit2.garrote <- glmnet(y = y.train, x = varmat.gar, family = family, alpha = alpha2, standardize = FALSE, 
@@ -1218,10 +1218,10 @@ perform_rgarrote <- function(data.obj, family = "gaussian", nlambda = c(10,10), 
     fit2.garrote <- vector(mode = "list", length = nl1)
     for(i in 2:nl1){
       # X garrote = X*beta_ridge
-      B.ridge <- diag(coef(fit1.init)[-1,i])
-      XB.ridge <- varmat %*% B.ridge
-      varmat.gar <- XB.ridge[, seq(1, k, 1)]
-      if(split_vars){varmat.gar <- XB.ridge[, seq(1, k, 1)] +  XB.ridge[, seq(k + 1, 2*k,1)]}
+      beta.init <- coef(fit1.init)[-1,i]
+      XB.ridge <- sapply(1:ncol(varmat), function(j) varmat[,j] * beta.init[j], simplify = "matrix")
+      if(split_vars){varmat.gar <- XB.ridge[, seq(1, k, 1)] +  XB.ridge[, seq(k + 1, 2*k,1)]
+      }else{varmat.gar <- XB.ridge[, seq(1, k, 1)]}
       
       fit2.garrote <- glmnet(y = y, x = varmat.gar, family = family, alpha = alpha2, 
                                lower.limits = 0, standardize = FALSE, nlambda = nl2, offset = clin_offset)
@@ -1269,6 +1269,7 @@ perform_rgarrote <- function(data.obj, family = "gaussian", nlambda = c(10,10), 
                      fitted.values = fitted.values, split_vars = split_vars))
   attr(res, "class") <- ifelse(alpha1==0, "ridge-garrote", "lasso-garrote")
   attr(res, "penalty") <- penalty
+
   return(res)
 }
 

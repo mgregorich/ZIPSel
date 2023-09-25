@@ -7,10 +7,10 @@
 rm(list=ls())
 
 # Packages
-#devtools::install_github("matherealize/simdata", ref="fix_missing_colapply")
+# devtools::install_github("matherealize/simdata", ref="fix_missing_colapply")
 pacman::p_load(ggplot2, parallel, future.apply, stringr, kableExtra,
                openxlsx, dplyr, tidyverse, tableone, concreg, Matrix,
-               glmnet, MASS, ranger, simdata)
+               glmnet, MASS, ranger, simdata, profvis)
 
 # Paths
 sim.date <- Sys.Date()
@@ -26,23 +26,25 @@ source(here::here("src","functions_aux.R"))
 source(here::here("src","functions_sim.R"))
 
 # Load & save setup
-source("src/setup.R")
+# source("src/setup.R")
 setup <- readRDS(here::here("src", "scenario_setup.rds"))
 scenarios <- setup[[1]]
 sim_design <- setup[[2]]
-
+scenarios$iter <- 2
 
 # ======================= Simulation ===========================================
 
 # --- Run through all scenarios
+options(future.globals.maxSize = 8000 * 1024^2)
 plan(multisession, workers = floor(detectCores()*0.25))
 invisible(future_lapply(1:nrow(scenarios), function(k) {
+  # print(paste0(k, "/", nrow(scenarios), " settings"))
   tryCatch({simulate_scenario(scn=scenarios[k,], dsgn=sim_design[[scenarios[k,]$dsgn]])
   }, error = function(e) {
     # log the error message to a file
     cat(paste0("Error in scenario k=",k,": ", e$message, "\n"), file = paste0(sim.path, "/error_log.txt"), append = TRUE)
   })
-}, future.seed = T))
+}, future.seed = TRUE))
 plan(sequential)
 
 

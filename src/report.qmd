@@ -35,7 +35,7 @@ pacman::p_load(ggplot2, parallel, future.apply, stringr, kableExtra,
 
 # Paths
 out.path <- "output"
-sim.date <- "2023-09-14"
+sim.date <- "2023-09-24"
 sim.file <- paste0("sim_", sim.date,"/")
 sim.path <- here::here(out.path, sim.file)
 ggcols <- c("black", "grey45","goldenrod3", "deepskyblue3", "royalblue3", "darkred", "seagreen4")
@@ -54,20 +54,19 @@ tbl_allsel <- tbl_res$performance$tbl_allsel %>%
 tbl_groupsel <- tbl_res$performance$tbl_groupsel
 ```
 
-
 # Scenario A
 
-:::{.panel-tabset}
-
+::: panel-tabset
 ## ZI: low
+
 ```{r}
 tbl_perf %>%
-  dplyr::select(scenario, a, n, p, epslvl, propzi, struczero, revzi, model, penalty, RMSPE.est) %>%
-  filter(scenario %in% "A" & penalty %in% c("combined", "-") & propzi == 0.75 & struczero == 0.33 & revzi == TRUE & model != "oracle") %>%
+  dplyr::select(scenario, UDdepen, n, p, epslvl, propzi, struczero, revzi, model, penalty, RMSPE.est) %>%
+  filter(scenario %in% "A" & penalty %in% c("combined", "-") & UDdepen == "U=D" & struczero == 0.33 & revzi == TRUE & model != "oracle") %>%
   mutate(n = to_factor(n)) %>%
   arrange(model, penalty) %>%
-  pivot_wider(id_cols = c(a, n, p, epslvl), values_from = RMSPE.est, names_from = model) %>%
-  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="a" ,
+  pivot_wider(id_cols = c(propzi, n, p, epslvl), values_from = RMSPE.est, names_from = model) %>%
+  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="propzi" ,
                    steps_y_base = -2, steps_y_height = 0.5, grid_rows = "p",
                    steps_names = "Residual variance",
                    x_name = "Sample size", y_name = "Averaged RMSPE",
@@ -138,6 +137,7 @@ tbl_perf %>%
 ```
 
 ## ZI: moderate
+
 ```{r}
 tbl_perf %>%
   dplyr::select(scenario, a, n, p, epslvl, propzi, struczero, revzi, model, penalty, RMSPE.est) %>%
@@ -213,8 +213,8 @@ tbl_perf %>%
                    )) 
 ```
 
-
 ## ZI: high
+
 ```{r}
 tbl_perf %>%
   dplyr::select(scenario, a, n, p, epslvl, propzi, struczero, revzi, model, penalty, RMSPE.est) %>%
@@ -289,14 +289,13 @@ tbl_perf %>%
                          legend.position="top")
                    )) 
 ```
-
 :::
 
 # Scenario B
 
-:::{.panel-tabset}
-
+::: panel-tabset
 ## ZI: low
+
 ```{r}
 tbl_perf %>%
   dplyr::select(scenario, a, n, p, epslvl, propzi, struczero, revzi, model, penalty, RMSPE.est) %>%
@@ -373,6 +372,7 @@ tbl_perf %>%
 ```
 
 ## ZI: moderate
+
 ```{r}
 tbl_perf %>%
   dplyr::select(scenario, a, n, p, epslvl, propzi, struczero, model, penalty, RMSPE.est) %>%
@@ -448,8 +448,8 @@ tbl_perf %>%
                    )) 
 ```
 
-
 ## ZI: high
+
 ```{r}
 tbl_perf %>%
   dplyr::select(scenario, a, n, p, epslvl, propzi, struczero, model, penalty, RMSPE.est) %>%
@@ -524,19 +524,17 @@ tbl_perf %>%
                          legend.position="top")
                    )) 
 ```
-
 :::
-
 
 # Variable selection
 
 ## False discovery rate
 
-
-:::{.panel-tabset}
+::: panel-tabset
 Proportion of zero-inflation: 0.25
 
 ### Scenario A
+
 ```{r}
 tbl_allsel %>%
   dplyr::select(scenario, a, n, p, epslvl, propzi, struczero, model, penalty, FPDR) %>%
@@ -563,6 +561,7 @@ tbl_allsel %>%
 ```
 
 ### Scenario B
+
 ```{r}
 tbl_allsel %>%
   dplyr::select(scenario, a, n, p, epslvl, propzi, struczero, model, penalty, FPDR) %>%
@@ -589,8 +588,7 @@ tbl_allsel %>%
 ```
 :::
 
-:::{.panel-tabset}
-
+::: panel-tabset
 Proportion of zero-inflation: 0.5
 
 ### Scenario A
@@ -620,8 +618,8 @@ tbl_allsel %>%
                    )) 
 ```
 
-
 ### Scenario B
+
 ```{r}
 tbl_allsel %>%
   dplyr::select(scenario, a, n, p, epslvl, propzi, struczero, model, penalty, FPDR) %>%
@@ -648,10 +646,7 @@ tbl_allsel %>%
 ```
 :::
 
-
-:::{.panel-tabset}
-
-
+::: panel-tabset
 ### Scenario A
 
 ```{r}
@@ -679,8 +674,8 @@ tbl_allsel %>%
                    )) 
 ```
 
-
 ### Scenario B
+
 ```{r}
 tbl_allsel %>%
   dplyr::select(scenario, a, n, p, epslvl, propzi, struczero, model, penalty, FPDR) %>%
@@ -709,7 +704,6 @@ tbl_allsel %>%
 
 ## True discovery rate
 
-
 ```{r}
 tbl_allsel %>%
   dplyr::select(scenario, a, n, p, epslvl, propzi, struczero, model, penalty, TPDR) %>%
@@ -759,4 +753,3 @@ tbl_allsel %>%
                          legend.position="top")
                    )) 
 ```
-

@@ -6,23 +6,23 @@
 
 
 # --- Parameter
+print("1/5 - Start setup configuration:")
 set.seed(666)
-iter <- 2
+iter <- 10
 regenerate_simdata <- FALSE
 
 n <- c(100, 200, 400)         # sample size
 p <- c(200, 400)             # number of candidate predictors
-beta_max <- 5                              # maximum coefficient
+beta_max <- 4                              # maximum coefficient
 UDdepen <- c("U", "U=2D", "U=D")                    # medium balance of U and D influence on y
-epsstd <- c(0, 1, 2)
+epslvl <- c("none", "moderate", "high")
 propzi <- c(0.25, 0.5, 0.75) 
 revzi <- c(FALSE, TRUE)
 struczero <- c(0.33, 0.66)
 scenario <- c("A", "B")
 
-tbl_simdata <- data.frame("p" = p, "dsgns" = paste0("dsgn_", 1:length(p)))
 
-# --- Scenario matrix
+# --- General scenario matrix
 scenarios <- expand.grid(
   iter = iter,
   scenario = scenario,
@@ -30,71 +30,104 @@ scenarios <- expand.grid(
   p = p,
   beta_max = beta_max,
   UDdepen = UDdepen,
-  epsstd = epsstd,
+  epslvl = epslvl,
   propzi = propzi,
   revzi = revzi, 
   struczero = struczero) %>%
-  merge(., tbl_simdata, by=c("p")) %>%
-  relocate(p, .after=n)  %>% 
-  mutate(a = ifelse(UDdepen %in% "U", 1, 0),
-         epslvl = ifelse(epsstd == 0, "none", ifelse(epsstd == 1, "moderate", "high")),
-         epsstd = ifelse(scenario == "A" & p == 200 & a == .2165, epsstd * 5.5, epsstd),
-         epsstd = ifelse(scenario == "A" & p == 200 & a == .28, epsstd * 6.5, epsstd),
-         epsstd = ifelse(scenario == "A" & p == 200 & a == 1, epsstd * 20.25, epsstd),
-         epsstd = ifelse(scenario == "A" & p == 400 & a == .2165, epsstd * 10, epsstd),
-         epsstd = ifelse(scenario == "A" & p == 400 & a == .28, epsstd * 12, epsstd),
-         epsstd = ifelse(scenario == "A" & p == 400 & a == 1, epsstd * 40, epsstd),
-         epsstd = ifelse(scenario == "B" & p == 200 & a == .2165, epsstd * 5.525, epsstd),
-         epsstd = ifelse(scenario == "B" & p == 200 & a == .28, epsstd * 6.1, epsstd),
-         epsstd = ifelse(scenario == "B" & p == 200 & a == 1, epsstd * 15, epsstd),
-         epsstd = ifelse(scenario == "B" & p == 400 & a == .2165, epsstd * 4.725, epsstd),
-         epsstd = ifelse(scenario == "B" & p == 400 & a == .28, epsstd * 5.35, epsstd),
-         epsstd = ifelse(scenario == "B" & p == 400 & a == 1, epsstd * 15, epsstd),
-         beta_max = ifelse(p == 400, beta_max *0.5, beta_max),
-         beta_max = ifelse(scenario %in% "A", beta_max * 0.2, beta_max)) %>% 
-  relocate(epslvl, .before = epsstd) %>%
-  relocate(a, .after=UDdepen) %>%
-  arrange(p, a, epslvl)
+  mutate(dsgn = ifelse(p==200, "dsgn_1", "dsgn_2"),
+         beta_max = ifelse(p == 400 & scenario %in% "A", 0.6, beta_max),
+         beta_max = ifelse(p == 200 & scenario %in% "A", 1.20, beta_max),
+         beta_max = ifelse(scenario %in% "B", 4, beta_max)) %>% 
+  arrange(scenario, n, p, epslvl)
 
 
-# --- Data simulation design
+# --- Generate sim data generator 
 if(regenerate_simdata){
   plan(multisession, workers = length(p))
   list_design <- future_lapply(1:length(p), function(x) generate_simdesign(p = p[x]), future.seed = TRUE)
   names(list_design) <- paste0("dsgn_", 1:length(p))
-  plan(sequential) 
+  plan(sequential)
+}else{
+  list_design <- readRDS(here::here("src", "scenario_setup.rds"))$list_design
   
-  for(i in 1:nrow(scenarios)){
-    print(i)
-    scn = scenarios[i,]
-    dsgn = list_design[[scenarios[i,]$dsgn]]
-    
+}
+print("2/5 - Simdata generator finished.")
+
+
+# --- Determine a for UD dependence: U, U=2D and U=D
+scenarios_UDdepen <- scenarios %>% 
+  mutate(a=NA, check_varXD=NA) %>% 
+  relocate(a, .after=UDdepen) %>%
+  filter(n==100 & epslvl == "none")
+for(i in 1:nrow(scenarios_UDdepen)){
+  print(i)
+  scn = scenarios_UDdepen[i,]
+  dsgn = list_design[[scenarios_UDdepen[i,]$dsgn]]
+  if(scn$UDdepen=="U"){
+    scenarios_UDdepen[i,]$a <- 1
+    scenarios_UDdepen[i,]$check_varXD <- NA   
+  }else{
     # Compute a
-    data.val <- data_generation(dsgn = dsgn, scenario = scn$scenario, n = 1000, p=scn$p, beta_max = scn$beta_max, a = scn$a, epsstd = scn$epsstd, 
+    data.val <- data_generation(dsgn = dsgn, scenario = scn$scenario, n = 10000, p=scn$p, beta_max = scn$beta_max, a = scn$a, epsstd = 0, 
                                 propzi = scn$propzi, revzi = scn$revzi, struczero = scn$struczero)
     
-    Xb <- data.val$data_gen$X_true %*% data.val$true_coef$beta_X
+    Xb <- data.val$data_gen$X_struc %*% data.val$true_coef$beta_X
     Db <- data.val$data_gen$D_struc %*% data.val$true_coef$beta_D
     
     a_U2D <- (4 - sqrt(8*(var(Xb) / var(Db)))) / (2*(2 - var(Xb) / var(Db)))
     a_UD <- (2 - sqrt(4*(var(Xb) / var(Db)))) / (2*(1 - var(Xb) / var(Db)))
-    scenarios[i,]$a <- ifelse(scn$UDdepen %in% "U", 1, ifelse(scn$UDdepen == "U=2D", a_U2D, a_UD))
-    scenarios[i,]$varXD <- var(scenarios[i,]$a*Xb)/var((1-scenarios[i,]$a)*Db)
-    
-    # Compute epsstd
-    data.val <- data_generation(dsgn = dsgn, scenario = scn$scenario, n = 100000, p=scn$p, beta_max = scn$beta_max, 
-                                a = scn$a, epsstd = scn$epsstd, 
-                                propzi = scn$propzi, revzi = scn$revzi, struczero = scn$struczero)
+    scenarios_UDdepen[i,]$a <- ifelse(scn$UDdepen == "U=2D", a_U2D, a_UD)
+    scenarios_UDdepen[i,]$check_varXD <- var(scenarios_UDdepen[i,]$a*Xb)/var((1-scenarios_UDdepen[i,]$a)*Db)
   }
-  
-}else{
-  list_design <- readRDS(here::here("src", "scenario_setup.rds"))$list_design
 }
+scenarios <- scenarios %>% 
+  full_join(., scenarios_UDdepen[,c("scenario", "p", "UDdepen", "propzi", "struczero", "revzi", "a", "check_varXD")], 
+            by=c("scenario", "p", "UDdepen", "propzi", "struczero", "revzi"))
+print("3/5 - Determine UDdependence finished.")
 
 
+# --- Determine residual variance
+scenarios_eps <- scenarios %>% 
+  mutate(epsstd=NA, check_R2=NA) %>% 
+  relocate(epsstd, .after=epslvl) %>% 
+  filter(n==100)
+for(i in 1:nrow(scenarios_eps)){
+  print(i)
+  scn = scenarios_eps[i,]
+  dsgn = list_design[[scenarios_eps[i,]$dsgn]]
+  if(scn$epslvl == "none"){
+    scenarios_eps[i,]$epsstd <- 0
+    scenarios_eps[i,]$check_R2 <- 1
+  }else{
+    data.val <- data_generation(dsgn = dsgn, scenario = scn$scenario, n = 100000, p=scn$p, beta_max = scn$beta_max, 
+                                a = scn$a, epsstd = 0, 
+                                propzi = scn$propzi, revzi = scn$revzi, struczero = scn$struczero)
+    
+    y_true <- data.val$data_gen$y-data.val$data_gen$eps
+    r2 <- ifelse(scn$epslvl == "moderate", 0.5, 0.2)
+    var.eps <- var(y_true) *((1 - r2)/r2)
+    sd.eps <- sqrt(var.eps)
+    
+    # Check R2
+    data.val <- data_generation(dsgn = dsgn, scenario = scn$scenario, n = 10000, p=scn$p, beta_max = scn$beta_max, 
+                                a = scn$a, epsstd = sd.eps, 
+                                propzi = scn$propzi, revzi = scn$revzi, struczero = scn$struczero)
+    checkR2 <- 1-(var(data.val$data_gen$eps)/var(data.val$data_gen$y))
+    scenarios_eps[i,]$epsstd <- sd.eps
+    scenarios_eps[i,]$check_R2 <- checkR2
+  }
+}
+scenarios <- scenarios %>% 
+  full_join(., scenarios_eps[,c("scenario", "p", "epslvl", "epsstd","UDdepen", "a","propzi", "struczero", "revzi", "a", "check_varXD", "check_R2")], 
+            by=c("scenario", "p", "epslvl", "UDdepen", "a","propzi", "struczero", "revzi", "check_varXD")) %>%
+  dplyr::select(-a.1) %>%
+  relocate(a, .after = UDdepen) %>%
+  relocate(epsstd, .after=epslvl)
+print("4/5 - Determine residual variance finished.")
 
 setup <- list("scenarios"=scenarios, "list_design"=list_design)
 saveRDS(setup, here::here("src", "scenario_setup.rds"))
+print("5/5 - Setup saved.")
 
 
 

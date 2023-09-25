@@ -12,7 +12,7 @@ simulate_scenario <- function(scn, dsgn){
   ## Remove later
   # nr=1; scn=scenarios[nr,]; dsgn=sim_design[[scenarios[nr,]$dsgn]]
   
-  filename <- paste0("sim_i", scn$iter, "_scn", scn$scenario, "_n", scn$n, "_p", scn$p, "_beta", scn$beta_max, "_a", scn$a, 
+  filename <- paste0("sim_i", scn$iter, "_scn", scn$scenario, "_n", scn$n, "_p", scn$p, "_beta", scn$beta_max, "_UDdepen", scn$UDdepen, 
                      "_eps", scn$epslvl, "_propzi", scn$propzi, "_revzi", tolower(scn$revzi), "_struczero", scn$struczero, ".rds")
 
   # Generate large validation dataset
@@ -25,7 +25,7 @@ simulate_scenario <- function(scn, dsgn){
     data_iter <- data_generation(dsgn = dsgn, scenario = scn$scenario, n = scn$n, p = scn$p, beta_max = scn$beta_max, a = scn$a, epsstd = scn$epsstd, 
                                  propzi=scn$propzi, revzi = scn$revzi, struczero=scn$struczero)
     res_iter <-  data_analysis(df = data_iter, data.val = data.val, n = scn$n, p = scn$p, 
-                               ncv = 10, nR = 10, nlams = 25)
+                               ncv = 10, nR = 1, nlams = 10)
     data_iter <- mapply(cbind, data_iter, "i" = x, SIMPLIFY = F)
     res_iter <- mapply(cbind, res_iter, "i" = x, SIMPLIFY = F)
     
@@ -45,8 +45,8 @@ data_generation <- function(dsgn, scenario, n, p, beta_max, a, epsstd, propzi, r
   
   # # Remove later (parameter input for function)
   # dsgn=dsgn; scenario = scn$scenario; n=100000; p=scn$p; ngroups=scn$ngroups; a=scn$a; epsstd=scn$epsstd;
-  # propzi=scn$propzi; struczero=scn$struczero; beta_max=scn$beta_max
-  
+  # propzi=scn$propzi; struczero=scn$struczero; beta_max=scn$beta_max; revzi=scn$revzi
+
   # Parameter
   ngroups = 4
   
@@ -59,8 +59,8 @@ data_generation <- function(dsgn, scenario, n, p, beta_max, a, epsstd, propzi, r
   seq_propzi <- rep(groupzi, ngroups)
   seq_strucz <- seq_propzi * struczero
 
-  D_struc <- as.matrix(sapply(1-seq_strucz, function(x) rbinom(n, size = 1, prob = x))) # per group linear increase in zero-inflation 0-80%
-  X <- as.matrix(data_logvars * D_struc)
+  D_struc <- sapply(1-seq_strucz, function(x) rbinom(n, size = 1, prob = x), simplify = "matrix") # per group linear increase in zero-inflation 0-80%
+  X_struc <- as.matrix(data_logvars * D_struc)
   
   # Extract hubs and indices of true predictors (scenario D)
   groupsize <- rep(p/ngroups, ngroups)
@@ -76,8 +76,8 @@ data_generation <- function(dsgn, scenario, n, p, beta_max, a, epsstd, propzi, r
     
     # Generate coeffs and error 
     beta_X <- beta_D <- rep(0, p)
-    beta_X[truepredindex] <- rev(seq(0, beta_max, length.out = ptrue+1)[-1])
-    beta_D[truepredindex] <-  sample(seq(0, beta_max, length.out = ptrue+1)[-1])  
+    beta_X[truepredindex] <- rev(seq(0.1, beta_max, length.out = ptrue+1)[-1])
+    beta_D[truepredindex] <-  sample(seq(0.1, beta_max, length.out = ptrue+1)[-1])  
   }else if(scenario %in% "B"){
     # Scenario B
     nelem <- c(5, 5, 5, 5)  # number of true predictors in each group
@@ -86,26 +86,26 @@ data_generation <- function(dsgn, scenario, n, p, beta_max, a, epsstd, propzi, r
     
     # Generate coeffs and error 
     beta_X <- beta_D <- rep(0, p)
-    beta_X[truepredindex] <- c(sapply(nelem, function(x) rev(seq(0, beta_max, length.out = x+1)[-1])))
-    beta_D[truepredindex] <-  c(sapply(nelem, function(x) sample(seq(0, beta_max, length.out = x+1)[-1], x)))    
+    beta_X[truepredindex] <- c(sapply(nelem, function(x) rev(seq(1, beta_max, length.out = x+1)[-1])))
+    beta_D[truepredindex] <-  c(sapply(nelem, function(x) sample(seq(1, beta_max, length.out = x+1)[-1], x)))    
   }else{
     stop("Scenario must be 'A' or 'B'")
   }
 
   # Generate outcome: a controls influence of X and D components
   eps <- rnorm(n, mean = 0, sd = epsstd)
-  y <- c(a * X %*% beta_X + (1-a) * D_struc %*% beta_D  + eps)
+  y <- c(a * X_struc %*% beta_X + (1-a) * D_struc %*% beta_D  + eps)
   
   # Structural and sampling zeros for data analyst
   sampzero <- 1 - struczero
   seq_sampz <- seq_propzi * sampzero
   sampz_thresh <- sapply(1:length(seq_sampz), function(i) quantile(data_logvars[,i], seq_sampz[i]))
   D_samp <- sapply(1:ncol(data_logvars), function(j) (data_logvars[,j] > sampz_thresh[j])*1)
-  Xs <- (data_logvars * D_struc) * D_samp
+  X_samp <- (data_logvars * D_struc) * D_samp
   # plot(x=1:ncol(Xs), sort(apply(Xs,2, function(x) sum(x==0)/length(x))))
   
-  out <- list("data_ana" = list("y" = y, "x" = Xs),
-              "data_gen" = list("y" = y, "X_true" = X, "D_struc" = D_struc, "D_samp" = D_samp,"eps" = eps),
+  out <- list("data_ana" = list("y" = y, "x" = X_samp),
+              "data_gen" = list("y" = y, "X_struc" = X_struc, "D_struc" = D_struc, "X_samp" = X_samp, "D_samp" = D_samp,"eps" = eps),
               "true_coef" = data.frame("beta_X" = beta_X, "beta_D" = beta_D),
               "info_zi" = data.frame("vind" = 1:length(seq_propzi), "propzi" = seq_propzi, "struczi" = seq_strucz, "samplzi" = seq_sampz))
   return(out)
@@ -123,7 +123,7 @@ data_analysis <- function(df, data.val, n, p, ncv, nR, nlams, pflist=list(c(1,2)
   # n=scn$n
   # p=scn$p
   # ngroups=scn$ngroups
-  # ncv=10; nR=10; nlams=25; pflist=list(c(1,2), c(2,1), c(1,3))
+  # ncv=10; nR=1; nlams=100; pflist=list(c(1,2), c(2,1), c(1,3))
 
   # Parameter
   ngroups = 4
@@ -135,7 +135,7 @@ data_analysis <- function(df, data.val, n, p, ncv, nR, nlams, pflist=list(c(1,2)
   methnames <- c("oracle", "lasso", "ridge", "lasso-ridge", "ridge-lasso", "ridge-garrote", "random forest")
   tbl_perf <- data.frame("model" = methnames,
                          "penalty" = c("-",rep(c("combined"), times = 5), "-"),
-                         R2 = NA, RMSPE = NA, MAE = NA, C = NA, CS = NA)
+                         R2 = NA, RMSPE = NA, MAE = NA, CS = NA)
   tbl_coef <- cbind.data.frame("var"=paste0("V", 1:nrow(df$true_coef)), df$true_coef)
   
   # --- Oracle
@@ -146,22 +146,22 @@ data_analysis <- function(df, data.val, n, p, ncv, nR, nlams, pflist=list(c(1,2)
   beta_oracle <- rep(0, ncol(X))
   beta_oracle[which(beta_true!=0)] <- coef(fit.oracle)[-1]
   beta_oracle[is.na(beta_oracle)] <- 0 
-  data.val$pred.oracle <-  fit.oracle$coefficients[1] + c(cbind(data.val$u, data.val$d) %*% beta_oracle) # intercept!!!!
-  tbl_perf[1, 3:7] <- eval_performance(pred = data.val$pred.oracle, obs = data.val$y)
+  data.val$pred.oracle <-  fit.oracle$coefficients[1] + c(cbind(data.val$u, data.val$d) %*% beta_oracle)
+  tbl_perf[1, 3:6] <- eval_performance(pred = data.val$pred.oracle, obs = data.val$y)
   tbl_coef$beta_oracle_u <- beta_oracle[1:(p)]
   tbl_coef$beta_oracle_d <- beta_oracle[(p+1):(2*p)]
   
   # --- Lasso
   fit.lasso.cv <- perform_penreg(data.obj, family = "gaussian", alpha1 = 1, nl1 = nlams, cv = ncv, R = nR, penalty = "combined")
   data.val$pred.lasso <- predict_penreg(obj = fit.lasso.cv, newdata = data.val, model = "lasso")
-  tbl_perf[2, 3:7] <- eval_performance(pred = data.val$pred.lasso, obs = data.val$y)
+  tbl_perf[2, 3:6] <- eval_performance(pred = data.val$pred.lasso, obs = data.val$y)
   tbl_coef$beta_lasso_cb <- fit.lasso.cv$coefficients[-1]
   
   # --- Ridge 
   fit.ridge.cb <- perform_penreg(data.obj, family = "gaussian",  alpha = 0, nl1 = nlams, cv = ncv, R = nR, 
                                  penalty = "combined", split_vars = TRUE)
   data.val$pred.ridge.cb <- predict_penreg(obj = fit.ridge.cb, newdata = data.val, model = "ridge")
-  tbl_perf[3, 3:7] <- eval_performance(pred = data.val$pred.ridge.cb, obs = data.val$y)
+  tbl_perf[3, 3:6] <- eval_performance(pred = data.val$pred.ridge.cb, obs = data.val$y)
   tbl_coef$beta_ridge_cb_u <- fit.ridge.cb$coefficients[2:(p+1)]
   tbl_coef$beta_ridge_cb_d <- fit.ridge.cb$coefficients[(p+2):(2*p+1)]
   
@@ -170,7 +170,7 @@ data_analysis <- function(df, data.val, n, p, ncv, nR, nlams, pflist=list(c(1,2)
   fit.lridge.cb <- perform_lridge(data.obj, family = "gaussian", cv = ncv, R = nR, nlambda = rep(nlams, 2), 
                                   penalty = "combined", split_vars = TRUE)
   data.val$pred.lridge.cb <- predict_lridge(obj = fit.lridge.cb, newdata = data.val)
-  tbl_perf[4, 3:7] <- eval_performance(pred = data.val$pred.lridge.cb, obs = data.val$y)
+  tbl_perf[4, 3:6] <- eval_performance(pred = data.val$pred.lridge.cb, obs = data.val$y)
   tbl_coef$beta_lridge_cb_u <- fit.lridge.cb$coefficients[2:(p+1)]
   tbl_coef$beta_lridge_cb_d <- fit.lridge.cb$coefficients[(p+2):(2*p+1)]
 
@@ -179,7 +179,7 @@ data_analysis <- function(df, data.val, n, p, ncv, nR, nlams, pflist=list(c(1,2)
   fit.rlasso.cb <- perform_rlasso(data.obj, family = "gaussian", cv = ncv, R = nR, nlambda = rep(nlams, 2), 
                                   penalty = "combined", split_vars = TRUE)
   data.val$pred.rlasso.cb <- predict_rlasso(obj = fit.rlasso.cb, newdata = data.val)
-  tbl_perf[5, 3:7] <- eval_performance(pred = data.val$pred.rlasso.cb, obs = data.val$y)
+  tbl_perf[5, 3:6] <- eval_performance(pred = data.val$pred.rlasso.cb, obs = data.val$y)
   tbl_coef$beta_rlasso_cb_u <- fit.rlasso.cb$coefficients[2:(p+1)]
   tbl_coef$beta_rlasso_cb_d <- fit.rlasso.cb$coefficients[(p+2):(2*p+1)]
   
@@ -187,7 +187,7 @@ data_analysis <- function(df, data.val, n, p, ncv, nR, nlams, pflist=list(c(1,2)
   fit.rgarrote.cb <- perform_rgarrote(data.obj, family = "gaussian", cv = ncv, R = nR, nlambda = rep(nlams, 2),
                                       penalty = "combined", alpha1 = 0, split_vars = TRUE)
   data.val$pred.rgarrote.cb <- predict_rgarrote(obj = fit.rgarrote.cb, newdata = data.val)
-  tbl_perf[6, 3:7] <- eval_performance(pred = data.val$pred.rgarrote.cb, obs = data.val$y)
+  tbl_perf[6, 3:6] <- eval_performance(pred = data.val$pred.rgarrote.cb, obs = data.val$y)
   tbl_coef$beta_rgarrote_cb_u <- fit.rgarrote.cb$coefficients[2:(p+1)]
   tbl_coef$beta_rgarrote_cb_d <- fit.rgarrote.cb$coefficients[(p+2):(2*p+1)]
   
@@ -195,7 +195,7 @@ data_analysis <- function(df, data.val, n, p, ncv, nR, nlams, pflist=list(c(1,2)
   train <- data.frame(y = data.obj$y, data.obj$x)
   fit.rf <- ranger(y~., data = train, num.trees = 500, num.threads = 1)
   data.val$pred.rf <- predict(fit.rf, data = data.val$x, num.threads = 1)$predictions
-  tbl_perf[7, 3:7] <- eval_performance(pred = data.val$pred.rf , obs = data.val$y)
+  tbl_perf[7, 3:6] <- eval_performance(pred = data.val$pred.rf , obs = data.val$y)
   tbl_perf$relRMSPE <- tbl_perf$RMSPE/min(tbl_perf$RMSPE)
   
   # Merge results
@@ -221,6 +221,7 @@ data_analysis <- function(df, data.val, n, p, ncv, nR, nlams, pflist=list(c(1,2)
               "est_varsel" = tbl_varsel, 
               "est_groupsel" = tbl_groupsel,
               "est_allsel" = tbl_allsel)
+
   return(out)
 }
 
@@ -253,9 +254,7 @@ summarize_scenario <- function(filename, scn, scn_res){
               "CS.est" = mean(CS, na.rm = T), "CS.med" = median(CS, na.rm = T),
               "CS.lo" = quantile(CS, 0.05, na.rm = T), "CS.up" = quantile(CS, 0.95, na.rm = T),
               "MAE.est" = mean(MAE, na.rm = T), "MAE.med" = median(MAE, na.rm = T),
-              "MAE.lo" = quantile(MAE, 0.05, na.rm = T), "MAE.up" = quantile(MAE, 0.95, na.rm = T),
-              "C.est" = mean(C, na.rm = T), "C.med" = median(C, na.rm = T),
-              "C.lo" = quantile(C, 0.05, na.rm = T), "C.up" = quantile(C, 0.95, na.rm = T)) %>%
+              "MAE.lo" = quantile(MAE, 0.05, na.rm = T), "MAE.up" = quantile(MAE, 0.95, na.rm = T)) %>%
     data.frame()  %>%
     merge(scn, . )
   
