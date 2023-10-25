@@ -24,8 +24,8 @@ format:
 rm(list = ls())
 
 pacman::p_load(ggplot2, parallel, future.apply, stringr, 
-               dplyr, tidyverse, tableone, concreg, gt,
-               glmnet, patchwork, ranger, tuneRanger, RColorBrewer, ggvenn)
+               dplyr, tidyr, tableone, gt,
+               glmnet, patchwork, RColorBrewer)
 
 source(here::here("src","functions_aux.R"))
 
@@ -41,7 +41,7 @@ set.seed(12345)
 
 ncv = 10
 nR  = 2
-propz = 1
+propz = 0.75
 data_mos <- readRDS(here::here("data", "mosaique", "Large_Mariella.rds"))
 data_peptides <- data_mos[,7:ncol(data_mos)]
 colnames(data_peptides) <- paste0("P",1:ncol(data_peptides))
@@ -107,6 +107,20 @@ table_vars %>%
 ```
 
 ```{r}
+data_peptides %>%
+  data.frame() %>%
+  mutate(ID=1:nrow(.)) %>%
+  pivot_longer(cols=!ID, values_to="Values", names_to="Variable") %>%
+  mutate_at(vars(Values), as.numeric) %>%
+  ggplot(aes(x=Values, group=ID, col=ID)) +
+  geom_density() +
+  scale_x_continuous("Value") +
+  scale_y_continuous("Density") +
+  theme_bw() +
+  theme(text=element_text(size=14), legend.position = "None")
+```
+
+```{r}
 p1 <- data_mos %>% 
   dplyr::select(-c(idAuswertung, Age, Sex, eGFR)) %>% 
   summarise_all(~sum(.x == 0) / n()) %>% 
@@ -140,14 +154,35 @@ p2 <- ggplot(data_sim, aes(x = P, y = value)) +
 p_together <- p1 + p2 + plot_annotation(tag_levels = 'A')
 ggsave(file = here::here("output", "example","fig_dist_zi.tiff"), plot = p_together,
        width = 2.25*100, height = 1*100, units = "mm", dpi = 350, compression = "lzw")
+p_together
 ```
+
+```{r}
+data_cor <- cor(data_peptides)
+melted_cormat <- reshape2::melt(data_cor) %>%
+  data.frame() %>%
+  mutate(value=as.numeric(value)) 
+
+ggplot(data=melted_cormat, aes(x=Var1, y=Var2, fill=value)) + 
+  geom_tile() +
+  scale_fill_gradient2(low = "blue", high = "red", mid = "white", 
+                       midpoint = 0, limit = c(-1,1), space = "Lab", 
+                       name="") +
+  scale_x_continuous("Candidate variables", expand=c(0,0)) +
+  scale_y_continuous("Candidate variables", expand=c(0,0)) +
+  theme_bw() 
+
+
+pheatmap::pheatmap(data_cor)
+```
+
 
 ## Example of data transformations
 
 ```{r}
 #| label: fig-example
 #| fig-cap: "Example of a single peptide from the MOsaique dataset displaying the effects of the data transformation and the data split into the continous U and the binary component D. Original data is the only panel without the log2-transformation."
-ind = 55 # propz=0.5
+ind = 60 # propz=0.5, ind=55
 paste0("Proportion of zero-inflation = ", round(sum(x[, ind]==0)/length(x[,ind])*100,2), "%")
 p1 <- data.frame("intensity" = x[, ind]) %>% 
   ggplot(aes(x = intensity)) + 
@@ -183,9 +218,11 @@ p4 <- data.frame("intensity" = to_factor(d[, ind])) %>%
   ggtitle("Binary component D")
 
 p_all <- (p1 + p2 ) / ( p3 + p4 ) + plot_annotation(tag_levels = list(c('(A)', '(B)', '(C1)', '(C2)')))
+p_all
+
+# Sace
 ggsave(file = here::here("output", "example","fig_dist_all.tiff"), plot=p_all,
        width = 1.25*80, height = 0.75*80, units = "mm", dpi = 350, compression = "lzw")
-
 ggsave(file = here::here("output", "example","fig_dist_A.tiff"), plot = p1,
        width = 1.25*80, height = 0.75*80, units = "mm", dpi = 350, compression = "lzw")
 ggsave(file = here::here("output","example","fig_dist_B.tiff"), plot = p2,
@@ -204,8 +241,8 @@ ggsave(file = here::here("output","example","fig_dist_C2.tiff"), plot = p4,
 
 ```{r models}
 # CV Predictions
-model <- rep(c("lasso", "ridge", "lasso-ridge", "ridge-lasso", "ridge-garrote", "random forest"), each=2)[-2]
-penalty <- c(rep(c("combined", "component"), 5)[-2], "without tuning", "tuning")
+model <- rep(c("lasso", "ridge", "lasso-ridge", "ridge-lasso", "ridge-garrote"), each=2)[-2]
+penalty <- c(rep(c("combined", "component"), 5)[-2])
 nmod <- length(model)
 tbl_performance <- cbind.data.frame(model, penalty, matrix(NA, nrow=ncv*nmod, ncol=4))
 colnames(tbl_performance) <- c("model", "penalty", "R2", "RMSPE", "MAE", "CS")
@@ -320,29 +357,39 @@ list_varsel$rgarrote.cb <- extract_varsel(list_coef$rgarrote.cb)
 list_varsel$rgarrote.cp <- extract_varsel(list_coef$rgarrote.cp)
 ```
 
-### Random forest
+<!-- ### Random forest -->
 
-```{r}
-#| output: false
+<!-- ```{r} -->
 
-dataset <- data.frame(y = log2(data_mos$eGFR), age = data_mos$Age, sex = data_mos$Sex, x, pred.rf.notune = NA, pred.rf.tune = NA)
+<!-- #| output: false -->
 
-for(i in 1:ncv){
-  train <- dataset[(1:n)[folds != i], ]
-  test <- dataset[(1:n)[folds == i], ]
-  
-  fit.rf.notune <- ranger(y~., data = train %>% dplyr::select(-c(pred.rf.notune, pred.rf.tune)), num.trees = 1000)
-  fit.rf.tune <- tuneMtryFast(y~., data = train %>% dplyr::select(-c(pred.rf.notune, pred.rf.tune)), num.trees = 1000, stepFactor = 0.5, doBest = TRUE, plot = FALSE)
-  
-  # Predictions
-   dataset$pred.rf.notune[(1:n)[folds == i]] <- predict(fit.rf.notune,  data = test %>% dplyr::select(-c(y, pred.rf.notune, pred.rf.tune)))$predictions
-   dataset$pred.rf.tune[(1:n)[folds == i]] <- predict(fit.rf.tune,  data = test %>% dplyr::select(-c(y, pred.rf.tune, pred.rf.notune)))$predictions
-   
-  # Performance 
-  tbl_performance[nmod*i-nmod+10, 3:6] <- eval_performance(pred = dataset$pred.rf.notune, obs = dataset$y)
-  tbl_performance[nmod*i-nmod+11, 3:6] <- eval_performance(pred = dataset$pred.rf.tune, obs = dataset$y)
-}
-```
+<!-- dataset <- data.frame(y = log2(data_mos$eGFR), age = data_mos$Age, sex = data_mos$Sex, x, pred.rf.notune = NA, pred.rf.tune = NA) -->
+
+<!-- for(i in 1:ncv){ -->
+
+<!--   train <- dataset[(1:n)[folds != i], ] -->
+
+<!--   test <- dataset[(1:n)[folds == i], ] -->
+
+<!--   fit.rf.notune <- ranger(y~., data = train %>% dplyr::select(-c(pred.rf.notune, pred.rf.tune)), num.trees = 1000) -->
+
+<!--   fit.rf.tune <- tuneMtryFast(y~., data = train %>% dplyr::select(-c(pred.rf.notune, pred.rf.tune)), num.trees = 1000, stepFactor = 0.5, doBest = TRUE, plot = FALSE) -->
+
+<!--   # Predictions -->
+
+<!--    dataset$pred.rf.notune[(1:n)[folds == i]] <- predict(fit.rf.notune,  data = test %>% dplyr::select(-c(y, pred.rf.notune, pred.rf.tune)))$predictions -->
+
+<!--    dataset$pred.rf.tune[(1:n)[folds == i]] <- predict(fit.rf.tune,  data = test %>% dplyr::select(-c(y, pred.rf.tune, pred.rf.notune)))$predictions -->
+
+<!--   # Performance  -->
+
+<!--   tbl_performance[nmod*i-nmod+10, 3:6] <- eval_performance(pred = dataset$pred.rf.notune, obs = dataset$y) -->
+
+<!--   tbl_performance[nmod*i-nmod+11, 3:6] <- eval_performance(pred = dataset$pred.rf.tune, obs = dataset$y) -->
+
+<!-- } -->
+
+<!-- ``` -->
 
 ```{r}
 # Final performance of all models
@@ -832,11 +879,15 @@ pcal_rgarrote_cp <- plot_calibration(pred = data.obj$pred.rgarrote.cp, obs = dat
 pcal_rgarrote_cb + pcal_rgarrote_cp 
 ```
 
-### Random forest
+<!-- ### Random forest -->
 
-```{r}
-pcal_rf_notune <- plot_calibration(pred = dataset$pred.rf.notune, obs = dataset$y, fig.title = "no tuning")
-pcal_rf_tune <- plot_calibration(pred = dataset$pred.rf.tune, obs = dataset$y, fig.title = "with tuning")
-pcal_rf_notune + pcal_rf_tune
-```
+<!-- ```{r} -->
+
+<!-- pcal_rf_notune <- plot_calibration(pred = dataset$pred.rf.notune, obs = dataset$y, fig.title = "no tuning") -->
+
+<!-- pcal_rf_tune <- plot_calibration(pred = dataset$pred.rf.tune, obs = dataset$y, fig.title = "with tuning") -->
+
+<!-- pcal_rf_notune + pcal_rf_tune -->
+
+<!-- ``` -->
 :::

@@ -5,46 +5,53 @@
 # ============================================================================ #
 
 rm(list=ls())
+set.seed(666)
 
 # Packages
 # devtools::install_github("matherealize/simdata", ref="fix_missing_colapply")
-pacman::p_load(ggplot2, parallel, future.apply, stringr, kableExtra,
-               openxlsx, dplyr, tidyverse, tableone, concreg, Matrix,
-               glmnet, MASS, ranger, simdata, profvis)
+pacman::p_load(parallel, future.apply, stringr, dplyr, tidyr, Matrix, 
+               glmnet, MASS, simdata)
 
 # Paths
 sim.date <- Sys.Date()
 sim.file <- paste0("sim_", sim.date,"/")
 sim.path <- here::here("output", sim.file)
 
+
 # Create output folder
-if(dir.exists(sim.path)){invisible(do.call(file.remove, list(list.files(sim.path, full.names = T))))
-}else{dir.create(sim.path)}
+# if(dir.exists(sim.path)){
+#   invisible(do.call(file.remove, list(list.files(sim.path, full.names = T))))
+# }else{dir.create(sim.path)}
 
 # R files
 source(here::here("src","functions_aux.R"))
 source(here::here("src","functions_sim.R"))
 
 # Load & save setup
-# source("src/setup.R")
+#source("src/setup.R")
 setup <- readRDS(here::here("src", "scenario_setup.rds"))
 scenarios <- setup[[1]]
 sim_design <- setup[[2]]
-scenarios$iter <- 2
+scenarios$iter <- 150
 
 # ======================= Simulation ===========================================
 
 # --- Run through all scenarios
-options(future.globals.maxSize = 8000 * 1024^2)
-plan(multisession, workers = floor(detectCores()*0.25))
-invisible(future_lapply(1:nrow(scenarios), function(k) {
-  # print(paste0(k, "/", nrow(scenarios), " settings"))
-  tryCatch({simulate_scenario(scn=scenarios[k,], dsgn=sim_design[[scenarios[k,]$dsgn]])
-  }, error = function(e) {
-    # log the error message to a file
-    cat(paste0("Error in scenario k=",k,": ", e$message, "\n"), file = paste0(sim.path, "/error_log.txt"), append = TRUE)
-  })
-}, future.seed = TRUE))
+plan(multisession, workers = 50)
+  # Specify seeds
+  # seeds <- future_lapply(1:nrow(scenarios), FUN = function(x) .Random.seed, future.chunk.size = Inf, future.seed = 666L)
+  # saveRDS(seeds, file=here::here(sim.path, "random_seeds_666.rds")) 
+
+  # Run scenarios
+  for(k in 1:nrow(scenarios)){
+    print(paste0(k, "/", nrow(scenarios), " scenarios"))
+    tryCatch({
+      simulate_scenario(scn=scenarios[k,], dsgn=sim_design[[scenarios[k,]$dsgn]])
+    }, error = function(e) {
+      # log the error message to a file
+      cat(paste0("Error in scenario k=",k,": ", e$message, "\n"), file = paste0(sim.path, "/error_log.txt"), append = TRUE)
+    })    
+  }
 plan(sequential)
 
 

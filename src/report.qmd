@@ -22,60 +22,85 @@ format:
 
 # Preliminaries
 
-```{r setup, include=FALSE}
+```{r }
 rm(list=ls())
-knitr::opts_chunk$set(echo = F, warning=F, message=F)
 
 source(here::here("src","functions_sim.R"))
 source(here::here("src","functions_aux.R"))
 #source(here::here("src","setup.R"))
 
 pacman::p_load(ggplot2, parallel, future.apply, stringr, kableExtra,
-               openxlsx, dplyr, tidyverse, simdata, looplot)
+               openxlsx, dplyr, tidyverse, simdata, looplot, gt)
 
 # Paths
 out.path <- "output"
-sim.date <- "2023-09-24"
+sim.date <- "2023-10-23"
 sim.file <- paste0("sim_", sim.date,"/")
 sim.path <- here::here(out.path, sim.file)
-ggcols <- c("black", "grey45","goldenrod3", "deepskyblue3", "royalblue3", "darkred", "seagreen4")
-methnames <- c("oracle", "lasso", "ridge", "ridge-lasso", "lasso-ridge", "ridge-garrote", "random forest")
+ggcols <- c("black", "grey45","goldenrod3", "deepskyblue3",
+            "royalblue3", "darkred")
+methnames <- c("oracle", "lasso", "ridge", "ridge-lasso",
+               "lasso-ridge", "ridge-garrote")
 # Read in results
-tbl_res <- readRDS(here::here(sim.path, "tbl_scenario_results.rds"))
+tbl_res <- readRDS(here::here(sim.path, "tbl_results_perf.rds"))
 
-tbl_perf <- tbl_res$performance$tbl_perf  %>% 
+tbl_perf <- tbl_res$tbl_perf  %>% 
   mutate(model = fct_relevel(model, methnames))
-tbl_iters_perf <- tbl_res$iters$tbl_iters_perf  %>% 
+tbl_varsel <- tbl_res$tbl_varsel %>% 
   mutate(model = fct_relevel(model, methnames))
-tbl_varsel <- tbl_res$performance$tbl_varsel %>% 
-  mutate(model = fct_relevel(model, methnames[2:7]))
-tbl_allsel <- tbl_res$performance$tbl_allsel %>% 
-  mutate(model = fct_relevel(model, methnames[2:7]))
-tbl_groupsel <- tbl_res$performance$tbl_groupsel
+tbl_allsel <- tbl_res$tbl_allsel %>% 
+  mutate(model = fct_relevel(model, methnames))
+tbl_groupsel <- tbl_res$tbl_groupsel%>% 
+  mutate(model = fct_relevel(model, methnames))
 ```
 
 # Scenario A
 
-::: panel-tabset
-## ZI: low
+## RMSPE
 
 ```{r}
 tbl_perf %>%
-  dplyr::select(scenario, UDdepen, n, p, epslvl, propzi, struczero, revzi, model, penalty, RMSPE.est) %>%
-  filter(scenario %in% "A" & penalty %in% c("combined", "-") & UDdepen == "U=D" & struczero == 0.33 & revzi == TRUE & model != "oracle") %>%
+  dplyr::select(scenario, UDdepen, n, epslvl, propzi, struczero, 
+                revzi, model, penalty, RMSPE.est, RMSPE.lo, RMSPE.up) %>%
+  filter(scenario %in% "A" & epslvl == "none" & revzi == TRUE & struczero == 0.33 & UDdepen == "U" &
+           model != "oracle") %>%
   mutate(n = to_factor(n)) %>%
   arrange(model, penalty) %>%
-  pivot_wider(id_cols = c(propzi, n, p, epslvl), values_from = RMSPE.est, names_from = model) %>%
-  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="propzi" ,
-                   steps_y_base = -2, steps_y_height = 0.5, grid_rows = "p",
+  ggplot(aes(x=n, y=RMSPE.est, colour = model, group = model, ymin = RMSPE.lo, ymax=  RMSPE.up)) + 
+      geom_point() + 
+      geom_line() +
+      geom_errorbar(width=0.25) +
+      scale_y_continuous(name="RMSPE") +
+      scale_color_manual(values = ggcols[-1]) +
+      facet_grid(UDdepen ~ propzi) +
+      theme_bw()  +
+      theme(text = element_text(size=16), strip.text = element_text(size=18))
+```
+
+```{r}
+#| fig-cap: "Scenario A with a linearly increasing proportion of zero-inflation of up to 75%"
+tbl_perf %>%
+  dplyr::select(scenario, UDdepen, n, epslvl, propzi, struczero, 
+                revzi, model, penalty, RMSPE.est) %>%
+  filter(scenario %in% "A" & propzi == 0.75 & revzi == TRUE & 
+           model != "oracle") %>%
+  mutate(n = to_factor(n)) %>%
+  mutate(RMSPE.est = ifelse(UDdepen == "U", RMSPE.est/10, RMSPE.est)) %>%
+  arrange(model, penalty) %>%
+  pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), 
+              values_from = RMSPE.est, names_from = model) %>%
+  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" ,
+                   grid_rows = "struczero",
+                   steps_y_base = -0.5, steps_y_height = 0.1, 
                    steps_names = "Residual variance",
                    x_name = "Sample size", y_name = "Averaged RMSPE",
                    spu_x_shift = 1.5,
                    grid_scales="free_y",
-                   colors = ggcols,
-                   steps_values_annotate = TRUE, steps_annotation_size = 3,
+                   colors = ggcols[-1],
+                   steps_values_annotate = TRUE, 
+                   steps_annotation_size = 2.5,
                    hline_intercept = 0,
-                   y_expand_add = c(7.5, 7.5),
+                   y_expand_add = c(1, 0.5),
                    post_processing = list(
                        add_custom_theme = list(
                          text=element_text(size = 14),
@@ -87,205 +112,666 @@ tbl_perf %>%
 ```
 
 ```{r}
+#| fig-cap: "Scenario A with a linearly increasing proportion of zero-inflation of up to 25%"
 tbl_perf %>%
-  dplyr::select(scenario, a, n, p, epslvl, propzi, struczero, revzi, model, penalty, R2.est) %>%
-  filter(scenario %in% "A" & penalty %in% c("combined", "-") & propzi == 0.25 & struczero == 0.33 & revzi == FALSE & model != "oracle") %>%
-  mutate(n = to_factor(n)) %>%
+  dplyr::select(scenario, UDdepen, n, epslvl, propzi, struczero, revzi,
+                model, penalty, RMSPE.est) %>%
+  filter(scenario %in% "A" & propzi == 0.25 & revzi == TRUE & 
+           model != "oracle" ) %>%
+  mutate(n = to_factor(n),
+         RMSPE.est = ifelse(UDdepen == "U", RMSPE.est/10, RMSPE.est)) %>%
   arrange(model, penalty) %>%
-  pivot_wider(id_cols = c(a, n, p, epslvl), values_from = R2.est, names_from = model) %>%
-  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="a" ,
-                   steps_y_base = -0.05, steps_y_height = 0.05, grid_rows = "p",
-                   steps_names = "Residual variance",
-                   x_name = "Sample size", y_name = "Averaged R2",
-                   spu_x_shift = 1.5,
-                   grid_scales="free_y",
-                   colors = ggcols,
-                   steps_values_annotate = TRUE, steps_annotation_size = 3,
-                   hline_intercept = 0,
-                   y_expand_add = c(0.25, 0.25),
-                   post_processing = list(
-                       add_custom_theme = list(
-                         text=element_text(size = 14),
-                         axis.text.x = element_text(size = 14, angle = -90,vjust = 0.5),
-                         legend.position="top")
-                   )) 
-```
-
-```{r}
-tbl_perf %>%
-  dplyr::select(scenario, a, n, p, epslvl, propzi, struczero, revzi, model, penalty, CS.est) %>%
-  filter(scenario %in% "A" & penalty %in% c("combined", "-") & propzi == 0.25 & struczero == 0.33 & revzi == FALSE) %>%
-  mutate(n = to_factor(n)) %>%
-  arrange(model, penalty) %>%
-  pivot_wider(id_cols = c(a, n, p, epslvl), values_from = CS.est, names_from = model) %>%
-  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="a" ,
-                   steps_y_base = 0, steps_y_height = 0.05, grid_rows = "p",
-                   steps_names = "Residual variance",
-                   x_name = "Sample size", y_name = "Averaged CS",
-                   spu_x_shift = 1.5,
-                   grid_scales="free_y",
-                   colors = ggcols,
-                   steps_values_annotate = TRUE, steps_annotation_size = 3,
-                   hline_intercept = 0,
-                   y_expand_add = c(0.25, 0.25),
-                   post_processing = list(
-                       add_custom_theme = list(
-                         text=element_text(size = 14),
-                         axis.text.x = element_text(size = 14, angle = -90,vjust = 0.5),
-                         legend.position="top")
-                   )) 
-```
-
-## ZI: moderate
-
-```{r}
-tbl_perf %>%
-  dplyr::select(scenario, a, n, p, epslvl, propzi, struczero, revzi, model, penalty, RMSPE.est) %>%
-  filter(scenario %in% "A" & penalty %in% c("combined", "-") & propzi == 0.5 & struczero == 0.33 & revzi == FALSE & model != "oracle") %>%
-  mutate(n = to_factor(n)) %>%
-  arrange(model, penalty) %>%
-  pivot_wider(id_cols = c(a, n, p, epslvl), values_from = RMSPE.est, names_from = model) %>%
-  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="a" ,
-                   steps_y_base = -2, steps_y_height = 0.5, grid_rows = "p",
+  pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), 
+              values_from = RMSPE.est, names_from = model) %>%
+  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , 
+                   grid_rows = "struczero",
+                   steps_y_base = -1, steps_y_height = 0.15, 
                    steps_names = "Residual variance",
                    x_name = "Sample size", y_name = "Averaged RMSPE",
                    spu_x_shift = 1.5,
                    grid_scales="free_y",
-                   colors = ggcols,
-                   steps_values_annotate = TRUE, steps_annotation_size = 3,
+                   colors = ggcols[-1],
+                   steps_values_annotate = TRUE, steps_annotation_size = 2.5,
                    hline_intercept = 0,
-                   y_expand_add = c(7.5, 7.5),
+                   y_expand_add = c(1, 0.5),
                    post_processing = list(
                        add_custom_theme = list(
                          text=element_text(size = 14),
-                         axis.text.x = element_text(size = 14, angle = -90,vjust = 0.5),
+                           axis.text.x = element_text(size = 14,
+                                                      angle = -90,
+                                                      vjust = 0.5),
                          legend.position="top")
                    )) 
 ```
 
 ```{r}
+#| fig-cap: "Scenario A with a linearly decreasing proportion of zero-inflation of starting from 75%"
 tbl_perf %>%
-  dplyr::select(scenario, a, n, p, epslvl, propzi, struczero, revzi, model, penalty, R2.est) %>%
-  filter(scenario %in% "A" & penalty %in% c("combined", "-") & propzi == 0.5 & struczero == 0.33 & revzi == FALSE) %>%
+  dplyr::select(scenario, UDdepen, n, epslvl, propzi, struczero, 
+                revzi, model, penalty, RMSPE.est) %>%
+  filter(scenario %in% "A" & propzi == 0.75 & revzi == FALSE & 
+           model != "oracle") %>%
   mutate(n = to_factor(n)) %>%
+  mutate(RMSPE.est = ifelse(UDdepen == "U", RMSPE.est/10, RMSPE.est)) %>%
   arrange(model, penalty) %>%
-  pivot_wider(id_cols = c(a, n, p, epslvl), values_from = R2.est, names_from = model) %>%
-  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="a" ,
-                   steps_y_base = -0.05, steps_y_height = 0.05, grid_rows = "p",
-                   steps_names = "Residual variance",
-                   x_name = "Sample size", y_name = "Averaged R2",
-                   spu_x_shift = 1.5,
-                   grid_scales="free_y",
-                   colors = ggcols,
-                   steps_values_annotate = TRUE, steps_annotation_size = 3,
-                   hline_intercept = 0,
-                   y_expand_add = c(0.25, 0.25),
-                   post_processing = list(
-                       add_custom_theme = list(
-                         text=element_text(size = 14),
-                         axis.text.x = element_text(size = 14, angle = -90,vjust = 0.5),
-                         legend.position="top")
-                   )) 
-```
-
-```{r}
-tbl_perf %>%
-  dplyr::select(scenario, a, n, p, epslvl, propzi, struczero, revzi, model, penalty, CS.est) %>%
-  filter(scenario %in% "A" & penalty %in% c("combined", "-") & propzi == 0.5 & struczero == 0.33 & revzi == FALSE & model != "oracle") %>%
-  mutate(n = to_factor(n)) %>%
-  arrange(model, penalty) %>%
-  pivot_wider(id_cols = c(a, n, p, epslvl), values_from = CS.est, names_from = model) %>%
-  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="a" ,
-                   steps_y_base = 0, steps_y_height = 0.05, grid_rows = "p",
-                   steps_names = "Residual variance",
-                   x_name = "Sample size", y_name = "Averaged CS",
-                   spu_x_shift = 1.5,
-                   grid_scales="free_y",
-                   colors = ggcols,
-                   steps_values_annotate = TRUE, steps_annotation_size = 3,
-                   hline_intercept = 0,
-                   y_expand_add = c(0.25, 0.25),
-                   post_processing = list(
-                       add_custom_theme = list(
-                         text=element_text(size = 14),
-                         axis.text.x = element_text(size = 14, angle = -90,vjust = 0.5),
-                         legend.position="top")
-                   )) 
-```
-
-## ZI: high
-
-```{r}
-tbl_perf %>%
-  dplyr::select(scenario, a, n, p, epslvl, propzi, struczero, revzi, model, penalty, RMSPE.est) %>%
-  filter(scenario %in% "A" & penalty %in% c("combined", "-") & propzi == 0.75 & struczero == 0.33 & revzi == FALSE & model != "oracle") %>%
-  mutate(n = to_factor(n)) %>%
-  arrange(model, penalty) %>%
-  pivot_wider(id_cols = c(a, n, p, epslvl), values_from = RMSPE.est, names_from = model) %>%
-  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="a" ,
-                   steps_y_base = -2, steps_y_height = 0.5, grid_rows = "p",
+  pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), 
+              values_from = RMSPE.est, names_from = model) %>%
+  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" ,
+                   grid_rows = "struczero",
+                   steps_y_base = -0.5, steps_y_height = 0.1, 
                    steps_names = "Residual variance",
                    x_name = "Sample size", y_name = "Averaged RMSPE",
                    spu_x_shift = 1.5,
                    grid_scales="free_y",
-                   colors = ggcols,
-                   steps_values_annotate = TRUE, steps_annotation_size = 3,
+                   colors = ggcols[-1],
+                   steps_values_annotate = TRUE, 
+                   steps_annotation_size = 2.5,
                    hline_intercept = 0,
-                   y_expand_add = c(7.5, 7.5),
+                   y_expand_add = c(1, 0.5),
                    post_processing = list(
                        add_custom_theme = list(
                          text=element_text(size = 14),
-                         axis.text.x = element_text(size = 14, angle = -90,vjust = 0.5),
+                           axis.text.x = element_text(size = 14,
+                                                      angle = -90,
+                                                      vjust = 0.5),
                          legend.position="top")
                    )) 
 ```
 
 ```{r}
+#| fig-cap: "Scenario A with a linearly decreasing proportion of zero-inflation of starting from 25%"
 tbl_perf %>%
-  dplyr::select(scenario, a, n, p, epslvl, propzi, struczero, revzi, model, penalty, R2.est) %>%
-  filter(scenario %in% "A" & penalty %in% c("combined", "-") & propzi == 0.75 & struczero == 0.33 & revzi == FALSE & model != "oracle") %>%
-  mutate(n = to_factor(n)) %>%
+  dplyr::select(scenario, UDdepen, n, epslvl, propzi, struczero, revzi,
+                model, penalty, RMSPE.est) %>%
+  filter(scenario %in% "A" & propzi == 0.25 & revzi == FALSE & 
+           model != "oracle" ) %>%
+  mutate(n = to_factor(n),
+         RMSPE.est = ifelse(UDdepen == "U", RMSPE.est/10, RMSPE.est)) %>%
   arrange(model, penalty) %>%
-  pivot_wider(id_cols = c(a, n, p, epslvl), values_from = R2.est, names_from = model) %>%
-  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="a" ,
-                   steps_y_base = -0.05, steps_y_height = 0.05, grid_rows = "p",
+  pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), 
+              values_from = RMSPE.est, names_from = model) %>%
+  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , 
+                   grid_rows = "struczero",
+                   steps_y_base = -1, steps_y_height = 0.15, 
                    steps_names = "Residual variance",
-                   x_name = "Sample size", y_name = "Averaged R2",
+                   x_name = "Sample size", y_name = "Averaged RMSPE",
                    spu_x_shift = 1.5,
                    grid_scales="free_y",
-                   colors = ggcols,
-                   steps_values_annotate = TRUE, steps_annotation_size = 3,
+                   colors = ggcols[-1],
+                   steps_values_annotate = TRUE, steps_annotation_size = 2.5,
                    hline_intercept = 0,
-                   y_expand_add = c(0.25, 0.25),
+                   y_expand_add = c(1, 0.5),
                    post_processing = list(
                        add_custom_theme = list(
                          text=element_text(size = 14),
-                         axis.text.x = element_text(size = 14, angle = -90,vjust = 0.5),
+                           axis.text.x = element_text(size = 14,
+                                                      angle = -90,
+                                                      vjust = 0.5),
+                         legend.position="top")
+                   )) 
+```
+
+## Relative RMSPE
+
+```{r}
+#| fig-cap: "Scenario A with a linearly increasing proportion of zero-inflation of up to 75%"
+tbl_perf %>%
+  dplyr::select(scenario, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, relRMSPE.est) %>%
+  filter(scenario %in% "A"  & propzi == 0.75 & revzi == TRUE & model != "oracle") %>%
+  mutate(n = to_factor(n)) %>%
+  arrange(model, penalty) %>%
+  pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = relRMSPE.est, names_from = model) %>%
+  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , 
+                   grid_rows = "struczero",
+                   steps_y_base = 0.5, steps_y_height = 0.05, 
+                   steps_names = "Residual variance",
+                   x_name = "Sample size", y_name = "Averaged relative RMSPE",
+                   spu_x_shift = 1.5,
+                   colors = ggcols[-1],
+                   steps_values_annotate = TRUE, steps_annotation_size = 2.5,
+                   hline_intercept = 1,
+                   y_expand_add = c(0.5, 0.25),
+                   post_processing = list(
+                       add_custom_theme = list(
+                         text=element_text(size = 14),
+                           axis.text.x = element_text(size = 14,
+                                                      angle = -90,
+                                                      vjust = 0.5),
                          legend.position="top")
                    )) 
 ```
 
 ```{r}
+#| fig-cap: "Scenario A with a linearly increasing proportion of zero-inflation of up tp 25%"
 tbl_perf %>%
-  dplyr::select(scenario, a, n, p, epslvl, propzi, struczero, revzi, model, penalty, CS.est) %>%
-  filter(scenario %in% "A" & penalty %in% c("combined", "-") & propzi == 0.75 & struczero == 0.33 & revzi == FALSE ) %>%
+  dplyr::select(scenario, UDdepen, n, epslvl, propzi, struczero, revzi, model,
+                penalty, relRMSPE.est) %>%
+  filter(scenario %in% "A" & propzi == 0.25 & revzi == TRUE & model != "oracle") %>%
   mutate(n = to_factor(n)) %>%
   arrange(model, penalty) %>%
-  pivot_wider(id_cols = c(a, n, p, epslvl), values_from = CS.est, names_from = model) %>%
-  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="a" ,
-                   steps_y_base = 0, steps_y_height = 0.05, grid_rows = "p",
+  pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = relRMSPE.est, names_from = model) %>%
+  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , 
+                   grid_rows = "struczero",
+                   steps_y_base = 0.75, steps_y_height = 0.05, 
+                   steps_names = "Residual variance",
+                   x_name = "Sample size", y_name = "Averaged relative RMSPE",
+                   spu_x_shift = 1.5,
+                   colors = ggcols[-1],
+                   steps_values_annotate = TRUE, steps_annotation_size = 2.5,
+                   hline_intercept = 1,
+                   y_expand_add = c(0.5, 0.25),
+                   post_processing = list(
+                       add_custom_theme = list(
+                         text=element_text(size = 14),
+                           axis.text.x = element_text(size = 14,
+                                                      angle = -90,
+                                                      vjust = 0.5),
+                         legend.position="top")
+                   )) 
+```
+
+```{r}
+#| fig-cap: "Scenario A with a linearly decreasing proportion of zero-inflation of starting from 75%"
+tbl_perf %>%
+  dplyr::select(scenario, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, relRMSPE.est) %>%
+  filter(scenario %in% "A" & propzi == 0.75 & revzi == FALSE & model != "oracle") %>%
+  mutate(n = to_factor(n)) %>%
+  arrange(model, penalty) %>%
+  pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = relRMSPE.est, names_from = model) %>%
+  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "struczero",
+                   steps_y_base = 0.5, steps_y_height = 0.1, 
+                   steps_names = "Residual variance",
+                   x_name = "Sample size", y_name = "Averaged relative RMSPE",
+                   spu_x_shift = 1.5,
+                   colors = ggcols[-1],
+                   steps_values_annotate = TRUE, steps_annotation_size = 2.5,
+                   hline_intercept = 1,
+                   y_expand_add = c(0.5, 0.25),
+                   post_processing = list(
+                       add_custom_theme = list(
+                         text=element_text(size = 14),
+                           axis.text.x = element_text(size = 14,
+                                                      angle = -90,
+                                                      vjust = 0.5),
+                         legend.position="top")
+                   )) 
+```
+
+```{r}
+#| fig-cap: "Scenario A with a linearly decreasing proportion of zero-inflation of starting from 25%"
+tbl_perf %>%
+  dplyr::select(scenario, UDdepen, n, epslvl, propzi, struczero, revzi, model,
+                penalty, relRMSPE.est) %>%
+  filter(scenario %in% "A" & propzi == 0.25 & revzi == FALSE & model != "oracle") %>%
+  mutate(n = to_factor(n)) %>%
+  arrange(model, penalty) %>%
+  pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = relRMSPE.est, names_from = model) %>%
+  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "struczero",
+                   steps_y_base = 0.5, steps_y_height = 0.1, 
+                   steps_names = "Residual variance",
+                   x_name = "Sample size", y_name = "Averaged relative RMSPE",
+                   spu_x_shift = 1.5,
+                   colors = ggcols[-1],
+                   steps_values_annotate = TRUE, steps_annotation_size = 2.5,
+                   hline_intercept = 1,
+                   y_expand_add = c(1, 0.5),
+                   post_processing = list(
+                       add_custom_theme = list(
+                         text=element_text(size = 14),
+                           axis.text.x = element_text(size = 14,
+                                                      angle = -90,
+                                                      vjust = 0.5),
+                         legend.position="top")
+                   )) 
+```
+
+## Calibration
+
+```{r}
+#| fig-cap: "Scenario A with a linearly increasing proportion of zero-inflation of up to 75%"
+tbl_perf %>%
+  dplyr::select(scenario, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, CS.est) %>%
+  filter(scenario %in% "A" & propzi == 0.75 & revzi == TRUE) %>%
+  mutate(n = to_factor(n)) %>%
+  arrange(model, penalty) %>%
+  pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = CS.est, names_from = model) %>%
+  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "struczero",
+                   steps_y_base = -0.1, steps_y_height = 0.05, 
                    steps_names = "Residual variance",
                    x_name = "Sample size", y_name = "Averaged CS",
                    spu_x_shift = 1.5,
-                   grid_scales="free_y",
                    colors = ggcols,
-                   steps_values_annotate = TRUE, steps_annotation_size = 3,
-                   hline_intercept = 0,
+                   steps_values_annotate = TRUE, steps_annotation_size = 2.5,
+                   hline_intercept = 1,
+                   y_expand_add = c(0.5, 0.15),
+                   post_processing = list(
+                       add_custom_theme = list(
+                         text=element_text(size = 14),
+                           axis.text.x = element_text(size = 14,
+                                                      angle = -90,
+                                                      vjust = 0.5),
+                         legend.position="top")
+                   )) 
+```
+
+```{r}
+#| fig-cap: "Scenario A with a linearly increasing proportion of zero-inflation of up to 25%"
+tbl_perf %>%
+  dplyr::select(scenario,  UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, CS.est) %>%
+  filter(scenario %in% "A" & propzi == 0.25 & revzi == TRUE) %>%
+  mutate(n = to_factor(n)) %>%
+  arrange(model, penalty) %>%
+  pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = CS.est, names_from = model) %>%
+  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "struczero",
+                   steps_y_base = 0.25, steps_y_height = 0.05, 
+                   steps_names = "Residual variance",
+                   x_name = "Sample size", y_name = "Averaged CS",
+                   spu_x_shift = 1.5,
+                   colors = ggcols,
+                   steps_values_annotate = TRUE, steps_annotation_size = 2.5,
+                   hline_intercept = 1,
                    y_expand_add = c(0.25, 0.25),
                    post_processing = list(
                        add_custom_theme = list(
                          text=element_text(size = 14),
-                         axis.text.x = element_text(size = 14, angle = -90,vjust = 0.5),
+                           axis.text.x = element_text(size = 14,
+                                                      angle = -90,
+                                                      vjust = 0.5),
+                         legend.position="top")
+                   )) 
+```
+
+```{r}
+#| fig-cap: "Scenario A with a linearly decreasing proportion of zero-inflation of starting from 75%"
+tbl_perf %>%
+  dplyr::select(scenario,  UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, CS.est) %>%
+  filter(scenario %in% "A"  & propzi == 0.75 & revzi == FALSE) %>%
+  mutate(n = to_factor(n)) %>%
+  arrange(model, penalty) %>%
+  pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = CS.est, names_from = model) %>%
+  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "struczero",
+                   steps_y_base = 0.0, steps_y_height = 0.05, 
+                   steps_names = "Residual variance",
+                   x_name = "Sample size", y_name = "Averaged CS",
+                   spu_x_shift = 1.5,
+                   colors = ggcols,
+                   steps_values_annotate = TRUE, steps_annotation_size = 2.5,
+                   hline_intercept = 1,
+                   y_expand_add = c(1, 0.25),
+                   post_processing = list(
+                       add_custom_theme = list(
+                         text=element_text(size = 14),
+                           axis.text.x = element_text(size = 14,
+                                                      angle = -90,
+                                                      vjust = 0.5),
+                         legend.position="top")
+                   )) 
+```
+
+```{r}
+#| fig-cap: "Scenario A with a linearly decreasing proportion of zero-inflation of starting from 25%"
+tbl_perf %>%
+  dplyr::select(scenario, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, CS.est) %>%
+  filter(scenario %in% "A" & propzi == 0.25 & revzi == FALSE) %>%
+  mutate(n = to_factor(n)) %>%
+  arrange(model, penalty) %>%
+  pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = CS.est, names_from = model) %>%
+  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "struczero",
+                   steps_y_base = 0.25, steps_y_height = 0.05, 
+                   steps_names = "Residual variance",
+                   x_name = "Sample size", y_name = "Averaged CS",
+                   spu_x_shift = 1.5,
+                   colors = ggcols,
+                   steps_values_annotate = TRUE, steps_annotation_size = 2.5,
+                   hline_intercept = 1,
+                   y_expand_add = c(0.5, 0.15),
+                   post_processing = list(
+                       add_custom_theme = list(
+                         text=element_text(size = 14),
+                           axis.text.x = element_text(size = 14,
+                                                      angle = -90,
+                                                      vjust = 0.5),
+                         legend.position="top")
+                   )) 
+```
+
+## R2
+
+```{r}
+#| fig-cap: "Scenario A with a linearly increasing proportion of zero-inflation of up to 75%"
+tbl_perf %>%
+  dplyr::select(scenario, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, R2.est) %>%
+  filter(scenario %in% "A" & propzi == 0.75 & revzi == TRUE ) %>%
+  mutate(n = to_factor(n)) %>%
+  arrange(model, penalty) %>%
+  pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = R2.est, names_from = model) %>%
+  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "struczero",
+                   steps_y_base = -0.15, steps_y_height = 0.05, 
+                   steps_names = "Residual variance",
+                   x_name = "Sample size", y_name = "Averaged R2",
+                   spu_x_shift = 1.5,
+                   colors = ggcols,
+                   steps_values_annotate = TRUE, steps_annotation_size = 2.5,
+                   hline_intercept = 0,
+                   y_expand_add = c(0.15, 0.15),
+                   post_processing = list(
+                       add_custom_theme = list(
+                         text=element_text(size = 14),
+                           axis.text.x = element_text(size = 14,
+                                                      angle = -90,
+                                                      vjust = 0.5),
+                         legend.position="top")
+                   )) 
+```
+
+```{r}
+#| fig-cap: "Scenario A with a linearly increasing proportion of zero-inflation of up to 25%"
+tbl_perf %>%
+  dplyr::select(scenario, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, R2.est) %>%
+  filter(scenario %in% "A" & propzi == 0.25 & revzi == TRUE) %>%
+  mutate(n = to_factor(n)) %>%
+  arrange(model, penalty) %>%
+  pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = R2.est, names_from = model) %>%
+  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "struczero",
+                   steps_y_base = -0.15, steps_y_height = 0.05, 
+                   steps_names = "Residual variance",
+                   x_name = "Sample size", y_name = "Averaged R2",
+                   spu_x_shift = 1.5,
+                   colors = ggcols,
+                   steps_values_annotate = TRUE, steps_annotation_size = 2.5,
+                   hline_intercept = 0,
+                   y_expand_add = c(0.15, 0.15),
+                   post_processing = list(
+                       add_custom_theme = list(
+                         text=element_text(size = 14),
+                           axis.text.x = element_text(size = 14,
+                                                      angle = -90,
+                                                      vjust = 0.5),
+                         legend.position="top")
+                   )) 
+```
+
+```{r}
+#| fig-cap: "Scenario A with a linearly decreasing proportion of zero-inflation of starting from 75%"
+tbl_perf %>%
+  dplyr::select(scenario, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, R2.est) %>%
+  filter(scenario %in% "A" & propzi == 0.75 & revzi == FALSE) %>%
+  mutate(n = to_factor(n)) %>%
+  arrange(model, penalty) %>%
+  pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = R2.est, names_from = model) %>%
+  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "struczero",
+                   steps_y_base = -0.15, steps_y_height = 0.05, 
+                   steps_names = "Residual variance",
+                   x_name = "Sample size", y_name = "Averaged R2",
+                   spu_x_shift = 1.5,
+                   colors = ggcols,
+                   steps_values_annotate = TRUE, steps_annotation_size = 2.5,
+                   hline_intercept = 0,
+                   y_expand_add = c(0.15, 0.15),
+                   post_processing = list(
+                       add_custom_theme = list(
+                         text=element_text(size = 14),
+                           axis.text.x = element_text(size = 14,
+                                                      angle = -90,
+                                                      vjust = 0.5),
+                         legend.position="top")
+                   )) 
+```
+
+```{r}
+#| fig-cap: "Scenario A with a linearly decreasing proportion of zero-inflation of starting from 25%"
+tbl_perf %>%
+  dplyr::select(scenario, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, R2.est) %>%
+  filter(scenario %in% "A" & propzi == 0.25 & revzi == FALSE) %>%
+  mutate(n = to_factor(n)) %>%
+  arrange(model, penalty) %>%
+  pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = R2.est, names_from = model) %>%
+  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "struczero",
+                   steps_y_base = -0.15, steps_y_height = 0.05, 
+                   steps_names = "Residual variance",
+                   x_name = "Sample size", y_name = "Averaged R2",
+                   spu_x_shift = 1.5,
+                   colors = ggcols,
+                   steps_values_annotate = TRUE, steps_annotation_size = 2.5,
+                   hline_intercept = 0,
+                   y_expand_add = c(0.15, 0.15),
+                   post_processing = list(
+                       add_custom_theme = list(
+                         text=element_text(size = 14),
+                           axis.text.x = element_text(size = 14,
+                                                      angle = -90,
+                                                      vjust = 0.5),
+                         legend.position="top")
+                   )) 
+```
+
+## Variable selection
+
+### Variable inclusion
+
+```{r}
+#| fig-cap: "Scenario A with a linearly increasing proportion of zero-inflation of up to 75%"
+tbl_perf %>%
+  dplyr::select(scenario, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, df.est) %>%
+  filter(scenario %in% "A" & propzi == 0.75 & revzi == TRUE ) %>%
+  mutate(n = to_factor(n)) %>%
+  arrange(model, penalty) %>%
+  pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = df.est, names_from = model) %>%
+  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "struczero",
+                   steps_y_base = -25, steps_y_height = 5, 
+                   steps_names = "Residual variance",
+                   x_name = "Sample size", y_name = "Averaged number of incuded peptides",
+                   spu_x_shift = 1.5,
+                   colors = ggcols,
+                   steps_values_annotate = TRUE, steps_annotation_size = 2.5,
+                   hline_intercept = 0,
+                   y_expand_add = c(50, 15),
+                   post_processing = list(
+                       add_custom_theme = list(
+                         text=element_text(size = 14),
+                           axis.text.x = element_text(size = 14,
+                                                      angle = -90,
+                                                      vjust = 0.5),
+                         legend.position="top")
+                   )) 
+```
+
+```{r}
+#| fig-cap: "Scenario A with a linearly increasing proportion of zero-inflation of up to 25%"
+tbl_perf %>%
+  dplyr::select(scenario, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, df.est) %>%
+  filter(scenario %in% "A"  & propzi == 0.25 & revzi == TRUE ) %>%
+  mutate(n = to_factor(n)) %>%
+  arrange(model, penalty) %>%
+  pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = df.est, names_from = model) %>%
+  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "struczero",
+                   steps_y_base = -25, steps_y_height = 5, 
+                   steps_names = "Residual variance",
+                   x_name = "Sample size", y_name = "Averaged number of incuded peptides",
+                   spu_x_shift = 1.5,
+                   colors = ggcols,
+                   steps_values_annotate = TRUE, steps_annotation_size = 2.5,
+                   hline_intercept = 0,
+                   y_expand_add = c(50, 15),
+                   post_processing = list(
+                       add_custom_theme = list(
+                         text=element_text(size = 14),
+                           axis.text.x = element_text(size = 14,
+                                                      angle = -90,
+                                                      vjust = 0.5),
+                         legend.position="top")
+                   )) 
+```
+
+```{r}
+#| fig-cap: "Scenario A with a denearly increasing proportion of zero-inflation starting with 75%"
+tbl_perf %>%
+  dplyr::select(scenario, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, df.est) %>%
+  filter(scenario %in% "A" & propzi == 0.75 & revzi == FALSE) %>%
+  mutate(n = to_factor(n)) %>%
+  arrange(model, penalty) %>%
+  pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = df.est, names_from = model) %>%
+  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "struczero",
+                   steps_y_base = -25, steps_y_height = 5, 
+                   steps_names = "Residual variance",
+                   x_name = "Sample size", y_name = "Averaged number of incuded peptides",
+                   spu_x_shift = 1.5,
+                   colors = ggcols,
+                   steps_values_annotate = TRUE, steps_annotation_size = 2.5,
+                   hline_intercept = 0,
+                   y_expand_add = c(50, 15),
+                   post_processing = list(
+                       add_custom_theme = list(
+                         text=element_text(size = 14),
+                           axis.text.x = element_text(size = 14,
+                                                      angle = -90,
+                                                      vjust = 0.5),
+                         legend.position="top")
+                   )) 
+```
+
+```{r}
+#| fig-cap: "Scenario A with a denearly increasing proportion of zero-inflation starting with 25%"
+tbl_perf %>%
+  dplyr::select(scenario, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, df.est) %>%
+  filter(scenario %in% "A" & propzi == 0.25 & revzi == FALSE ) %>%
+  mutate(n = to_factor(n)) %>%
+  arrange(model, penalty) %>%
+  pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = df.est, names_from = model) %>%
+  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "struczero",
+                   steps_y_base = -25, steps_y_height = 5, 
+                   steps_names = "Residual variance",
+                   x_name = "Sample size", y_name = "Averaged number of incuded peptides",
+                   spu_x_shift = 1.5,
+                   colors = ggcols,
+                   steps_values_annotate = TRUE, steps_annotation_size = 2.5,
+                   hline_intercept = 0,
+                   y_expand_add = c(50, 15),
+                   post_processing = list(
+                       add_custom_theme = list(
+                         text=element_text(size = 14),
+                           axis.text.x = element_text(size = 14,
+                                                      angle = -90,
+                                                      vjust = 0.5),
+                         legend.position="top")
+                   )) 
+```
+
+### Discovery rates
+
+::: panel-tabset
+#### TPDR
+
+```{r}
+#| fig-cap: "Scenario A with a denearly increasing proportion of zero-inflation starting with 75%"
+tbl_allsel %>%
+  dplyr::select(scenario, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, TPDR) %>%
+  filter(scenario %in% "A" & propzi == 0.75 & revzi == TRUE) %>%
+  mutate(n = to_factor(n)) %>%
+  arrange(model, penalty) %>%
+  pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = TPDR, names_from = model) %>%
+  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "struczero",
+                   steps_y_base = -0.1, steps_y_height = 0.025, 
+                   steps_names = "Residual variance",
+                   x_name = "Sample size", y_name = "True-postive discovery rate",
+                   spu_x_shift = 1.5,
+                   colors = ggcols,
+                   steps_values_annotate = TRUE, steps_annotation_size = 2.5,
+                   hline_intercept = 0,
+                   y_expand_add = c(0.15, 0.1),
+                   post_processing = list(
+                       add_custom_theme = list(
+                         text=element_text(size = 14),
+                           axis.text.x = element_text(size = 14,
+                                                      angle = -90,
+                                                      vjust = 0.5),
+                         legend.position="top")
+                   )) 
+```
+
+#### TNDR
+
+```{r}
+#| fig-cap: "Scenario A with a denearly increasing proportion of zero-inflation starting with 75%"
+tbl_allsel %>%
+  dplyr::select(scenario, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, TNDR) %>%
+  filter(scenario %in% "A" & propzi == 0.75 & revzi == TRUE ) %>%
+  mutate(n = to_factor(n)) %>%
+  arrange(model, penalty) %>%
+  pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = TNDR, names_from = model) %>%
+  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "struczero",
+                   steps_y_base = -0.1, steps_y_height = 0.025, 
+                   steps_names = "Residual variance",
+                   x_name = "Sample size", y_name = "True-postive discovery rate",
+                   spu_x_shift = 1.5,
+                   colors = ggcols,
+                   steps_values_annotate = TRUE, steps_annotation_size = 2.5,
+                   hline_intercept = 0,
+                   y_expand_add = c(0.15, 0.1),
+                   post_processing = list(
+                       add_custom_theme = list(
+                         text=element_text(size = 14),
+                           axis.text.x = element_text(size = 14,
+                                                      angle = -90,
+                                                      vjust = 0.5),
+                         legend.position="top")
+                   )) 
+```
+
+#### FPDR
+
+```{r}
+#| fig-cap: "Scenario A with a denearly increasing proportion of zero-inflation starting with 75%"
+tbl_allsel %>%
+  dplyr::select(scenario, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, FPDR) %>%
+  filter(scenario %in% "A" & propzi == 0.75 & revzi == TRUE ) %>%
+  mutate(n = to_factor(n)) %>%
+  arrange(model, penalty) %>%
+  pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = FPDR, names_from = model) %>%
+  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "struczero",
+                   steps_y_base = -0.1, steps_y_height = 0.025, 
+                   steps_names = "Residual variance",
+                   x_name = "Sample size", y_name = "True-postive discovery rate",
+                   spu_x_shift = 1.5,
+                   colors = ggcols,
+                   steps_values_annotate = TRUE, steps_annotation_size = 2.5,
+                   hline_intercept = 0,
+                   y_expand_add = c(0.1, 0.1),
+                   post_processing = list(
+                       add_custom_theme = list(
+                         text=element_text(size = 14),
+                           axis.text.x = element_text(size = 14,
+                                                      angle = -90,
+                                                      vjust = 0.5),
+                         legend.position="top")
+                   )) 
+```
+
+#### FNDR
+
+```{r}
+#| fig-cap: "Scenario A with a denearly increasing proportion of zero-inflation starting with 75%"
+tbl_allsel %>%
+  dplyr::select(scenario, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, FNDR) %>%
+  filter(scenario %in% "A" & propzi == 0.75 & revzi == TRUE) %>%
+  mutate(n = to_factor(n)) %>%
+  arrange(model, penalty) %>%
+  pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = FNDR, names_from = model) %>%
+  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "struczero",
+                   steps_y_base = -0.1, steps_y_height = 0.025, 
+                   steps_names = "Residual variance",
+                   x_name = "Sample size", y_name = "False-negative discovery rate",
+                   spu_x_shift = 1.5,
+                   colors = ggcols,
+                   steps_values_annotate = TRUE, steps_annotation_size = 2.5,
+                   hline_intercept = 0,
+                   y_expand_add = c(0.15, 0.1),
+                   post_processing = list(
+                       add_custom_theme = list(
+                         text=element_text(size = 14),
+                           axis.text.x = element_text(size = 14,
+                                                      angle = -90,
+                                                      vjust = 0.5),
                          legend.position="top")
                    )) 
 ```
@@ -293,463 +779,704 @@ tbl_perf %>%
 
 # Scenario B
 
-::: panel-tabset
-## ZI: low
+## RMSPE
 
 ```{r}
+#| fig-cap: "Scenario B with a linearly increasing proportion of zero-inflation of up to 75%"
 tbl_perf %>%
-  dplyr::select(scenario, a, n, p, epslvl, propzi, struczero, revzi, model, penalty, RMSPE.est) %>%
-  filter(scenario %in% "B" & penalty %in% c("combined", "-") & propzi == 0.25 & struczero == 0.33 & revzi == FALSE & model != "oracle") %>%
+  dplyr::select(scenario, UDdepen, n, epslvl, propzi, struczero, 
+                revzi, model, penalty, RMSPE.est) %>%
+  filter(scenario %in% "B" & propzi == 0.75 & revzi == TRUE & 
+           model != "oracle") %>%
   mutate(n = to_factor(n)) %>%
+  mutate(RMSPE.est = ifelse(UDdepen == "U", RMSPE.est/10, RMSPE.est)) %>%
   arrange(model, penalty) %>%
-  pivot_wider(id_cols = c(a, n, p, epslvl), values_from = RMSPE.est, names_from = model) %>%
-  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="a" ,
-                   steps_y_base = -2, steps_y_height = 0.5, grid_rows = "p",
+  pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), 
+              values_from = RMSPE.est, names_from = model) %>%
+  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" ,
+                   grid_rows = "struczero",
+                   steps_y_base = -0.5, steps_y_height = 0.1, 
                    steps_names = "Residual variance",
                    x_name = "Sample size", y_name = "Averaged RMSPE",
                    spu_x_shift = 1.5,
                    grid_scales="free_y",
-                   colors = ggcols,
-                   steps_values_annotate = TRUE, steps_annotation_size = 3,
+                   colors = ggcols[-1],
+                   steps_values_annotate = TRUE, 
+                   steps_annotation_size = 2.5,
                    hline_intercept = 0,
-                   y_expand_add = c(7.5, 7.5),
+                   y_expand_add = c(1, 0.5),
                    post_processing = list(
                        add_custom_theme = list(
                          text=element_text(size = 14),
-                         axis.text.x = element_text(size = 14, angle = -90,vjust = 0.5),
+                           axis.text.x = element_text(size = 14,
+                                                      angle = -90,
+                                                      vjust = 0.5),
                          legend.position="top")
                    )) 
 ```
 
 ```{r}
+#| fig-cap: "Scenario B with a linearly increasing proportion of zero-inflation of up to 25%"
 tbl_perf %>%
-  dplyr::select(scenario, a, n, p, epslvl, propzi, struczero, model, penalty, R2.est) %>%
-  filter(scenario %in% "B" & penalty %in% c("combined", "-") & propzi == 0.25 & struczero == 0.33) %>%
-  mutate(n = to_factor(n)) %>%
+  dplyr::select(scenario, UDdepen, n, epslvl, propzi, struczero, revzi,
+                model, penalty, RMSPE.est) %>%
+  filter(scenario %in% "B" & propzi == 0.25 & revzi == TRUE & 
+           model != "oracle" ) %>%
+  mutate(n = to_factor(n),
+         RMSPE.est = ifelse(UDdepen == "U", RMSPE.est/10, RMSPE.est)) %>%
   arrange(model, penalty) %>%
-  pivot_wider(id_cols = c(a, n, p, epslvl), values_from = R2.est, names_from = model) %>%
-  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="p" ,
-                   steps_y_base = -0.05, steps_y_height = 0.05, grid_rows = "a",
-                   steps_names = "Residual variance",
-                   x_name = "Sample size", y_name = "Averaged R2",
-                   spu_x_shift = 1.5,
-                   grid_scales="free_y",
-                   colors = ggcols,
-                   steps_values_annotate = TRUE, steps_annotation_size = 3,
-                   hline_intercept = 0,
-                   y_expand_add = c(0.25, 0.25),
-                   post_processing = list(
-                       add_custom_theme = list(
-                         text=element_text(size = 14),
-                         axis.text.x = element_text(size = 14, angle = -90,vjust = 0.5),
-                         legend.position="top")
-                   )) 
-```
-
-```{r}
-tbl_perf %>%
-  dplyr::select(scenario, a, n, p, epslvl, propzi, struczero, model, penalty, CS.est) %>%
-  filter(scenario %in% "B" & penalty %in% c("combined", "-") & propzi == 0.25 & struczero == 0.33) %>%
-  mutate(n = to_factor(n)) %>%
-  arrange(model, penalty) %>%
-  pivot_wider(id_cols = c(a, n, p, epslvl), values_from = CS.est, names_from = model) %>%
-  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="p" ,
-                   steps_y_base = 0, steps_y_height = 0.05, grid_rows = "a",
-                   steps_names = "Residual variance",
-                   x_name = "Sample size", y_name = "Averaged CS",
-                   spu_x_shift = 1.5,
-                   grid_scales="free_y",
-                   colors = ggcols,
-                   steps_values_annotate = TRUE, steps_annotation_size = 3,
-                   hline_intercept = 0,
-                   y_expand_add = c(0.25, 0.25),
-                   post_processing = list(
-                       add_custom_theme = list(
-                         text=element_text(size = 14),
-                         axis.text.x = element_text(size = 14, angle = -90,vjust = 0.5),
-                         legend.position="top")
-                   )) 
-```
-
-## ZI: moderate
-
-```{r}
-tbl_perf %>%
-  dplyr::select(scenario, a, n, p, epslvl, propzi, struczero, model, penalty, RMSPE.est) %>%
-  filter(scenario %in% "B" & penalty %in% c("combined", "-") & propzi == 0.5 & struczero == 0.33 & model != "oracle") %>%
-  mutate(n = to_factor(n)) %>%
-  arrange(model, penalty) %>%
-  pivot_wider(id_cols = c(a, n, p, epslvl), values_from = RMSPE.est, names_from = model) %>%
-  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="p" ,
-                   steps_y_base = -2, steps_y_height = 0.5, grid_rows = "a",
+  pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), 
+              values_from = RMSPE.est, names_from = model) %>%
+  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , 
+                   grid_rows = "struczero",
+                   steps_y_base = -1, steps_y_height = 0.15, 
                    steps_names = "Residual variance",
                    x_name = "Sample size", y_name = "Averaged RMSPE",
                    spu_x_shift = 1.5,
                    grid_scales="free_y",
-                   colors = ggcols,
-                   steps_values_annotate = TRUE, steps_annotation_size = 3,
+                   colors = ggcols[-1],
+                   steps_values_annotate = TRUE, steps_annotation_size = 2.5,
                    hline_intercept = 0,
-                   y_expand_add = c(7.5, 7.5),
+                   y_expand_add = c(1, 0.5),
                    post_processing = list(
                        add_custom_theme = list(
                          text=element_text(size = 14),
-                         axis.text.x = element_text(size = 14, angle = -90,vjust = 0.5),
+                           axis.text.x = element_text(size = 14,
+                                                      angle = -90,
+                                                      vjust = 0.5),
                          legend.position="top")
                    )) 
 ```
 
 ```{r}
+#| fig-cap: "Scenario B with a linearly decreasing proportion of zero-inflation of starting from 75%"
 tbl_perf %>%
-  dplyr::select(scenario, a, n, p, epslvl, propzi, struczero, model, penalty, R2.est) %>%
-  filter(scenario %in% "B" & penalty %in% c("combined", "-") & propzi == 0.5 & struczero == 0.33) %>%
+  dplyr::select(scenario, UDdepen, n, epslvl, propzi, struczero, 
+                revzi, model, penalty, RMSPE.est) %>%
+  filter(scenario %in% "B" & propzi == 0.75 & revzi == FALSE & 
+           model != "oracle") %>%
   mutate(n = to_factor(n)) %>%
+  mutate(RMSPE.est = ifelse(UDdepen == "U", RMSPE.est/10, RMSPE.est)) %>%
   arrange(model, penalty) %>%
-  pivot_wider(id_cols = c(a, n, p, epslvl), values_from = R2.est, names_from = model) %>%
-  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="p" ,
-                   steps_y_base = -0.05, steps_y_height = 0.05, grid_rows = "a",
-                   steps_names = "Residual variance",
-                   x_name = "Sample size", y_name = "Averaged R2",
-                   spu_x_shift = 1.5,
-                   grid_scales="free_y",
-                   colors = ggcols,
-                   steps_values_annotate = TRUE, steps_annotation_size = 3,
-                   hline_intercept = 0,
-                   y_expand_add = c(0.25, 0.25),
-                   post_processing = list(
-                       add_custom_theme = list(
-                         text=element_text(size = 14),
-                         axis.text.x = element_text(size = 14, angle = -90,vjust = 0.5),
-                         legend.position="top")
-                   )) 
-```
-
-```{r}
-tbl_perf %>%
-  dplyr::select(scenario, a, n, p, epslvl, propzi, struczero, model, penalty, CS.est) %>%
-  filter(scenario %in% "B" & penalty %in% c("combined", "-") & propzi == 0.5 & struczero == 0.33) %>%
-  mutate(n = to_factor(n)) %>%
-  arrange(model, penalty) %>%
-  pivot_wider(id_cols = c(a, n, p, epslvl), values_from = CS.est, names_from = model) %>%
-  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="p" ,
-                   steps_y_base = 0, steps_y_height = 0.05, grid_rows = "a",
-                   steps_names = "Residual variance",
-                   x_name = "Sample size", y_name = "Averaged CS",
-                   spu_x_shift = 1.5,
-                   grid_scales="free_y",
-                   colors = ggcols,
-                   steps_values_annotate = TRUE, steps_annotation_size = 3,
-                   hline_intercept = 0,
-                   y_expand_add = c(0.25, 0.25),
-                   post_processing = list(
-                       add_custom_theme = list(
-                         text=element_text(size = 14),
-                         axis.text.x = element_text(size = 14, angle = -90,vjust = 0.5),
-                         legend.position="top")
-                   )) 
-```
-
-## ZI: high
-
-```{r}
-tbl_perf %>%
-  dplyr::select(scenario, a, n, p, epslvl, propzi, struczero, model, penalty, RMSPE.est) %>%
-  filter(scenario %in% "B" & penalty %in% c("combined", "-") & propzi == 0.75 & struczero == 0.33 & model != "oracle") %>%
-  mutate(n = to_factor(n)) %>%
-  arrange(model, penalty) %>%
-  pivot_wider(id_cols = c(a, n, p, epslvl), values_from = RMSPE.est, names_from = model) %>%
-  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="p" ,
-                   steps_y_base = -2, steps_y_height = 0.5, grid_rows = "a",
+  pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), 
+              values_from = RMSPE.est, names_from = model) %>%
+  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" ,
+                   grid_rows = "struczero",
+                   steps_y_base = -0.5, steps_y_height = 0.1, 
                    steps_names = "Residual variance",
                    x_name = "Sample size", y_name = "Averaged RMSPE",
                    spu_x_shift = 1.5,
                    grid_scales="free_y",
-                   colors = ggcols,
-                   steps_values_annotate = TRUE, steps_annotation_size = 3,
+                   colors = ggcols[-1],
+                   steps_values_annotate = TRUE, 
+                   steps_annotation_size = 2.5,
                    hline_intercept = 0,
-                   y_expand_add = c(7.5, 7.5),
+                   y_expand_add = c(1, 0.5),
                    post_processing = list(
                        add_custom_theme = list(
                          text=element_text(size = 14),
-                         axis.text.x = element_text(size = 14, angle = -90,vjust = 0.5),
+                           axis.text.x = element_text(size = 14,
+                                                      angle = -90,
+                                                      vjust = 0.5),
                          legend.position="top")
                    )) 
 ```
 
 ```{r}
+#| fig-cap: "Scenario B with a linearly decreasing proportion of zero-inflation of starting from 25%"
 tbl_perf %>%
-  dplyr::select(scenario, a, n, p, epslvl, propzi, struczero, model, penalty, R2.est) %>%
-  filter(scenario %in% "B" & penalty %in% c("combined", "-") & propzi == 0.75 & struczero == 0.33) %>%
-  mutate(n = to_factor(n)) %>%
+  dplyr::select(scenario, UDdepen, n, epslvl, propzi, struczero, revzi,
+                model, penalty, RMSPE.est) %>%
+  filter(scenario %in% "B" & propzi == 0.25 & revzi == FALSE & 
+           model != "oracle" ) %>%
+  mutate(n = to_factor(n),
+         RMSPE.est = ifelse(UDdepen == "U", RMSPE.est/10, RMSPE.est)) %>%
   arrange(model, penalty) %>%
-  pivot_wider(id_cols = c(a, n, p, epslvl), values_from = R2.est, names_from = model) %>%
-  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="p" ,
-                   steps_y_base = -0.05, steps_y_height = 0.05, grid_rows = "a",
+  pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), 
+              values_from = RMSPE.est, names_from = model) %>%
+  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , 
+                   grid_rows = "struczero",
+                   steps_y_base = -1, steps_y_height = 0.15, 
                    steps_names = "Residual variance",
-                   x_name = "Sample size", y_name = "Averaged R2",
+                   x_name = "Sample size", y_name = "Averaged RMSPE",
                    spu_x_shift = 1.5,
                    grid_scales="free_y",
-                   colors = ggcols,
-                   steps_values_annotate = TRUE, steps_annotation_size = 3,
+                   colors = ggcols[-1],
+                   steps_values_annotate = TRUE, steps_annotation_size = 2.5,
                    hline_intercept = 0,
-                   y_expand_add = c(0.25, 0.25),
+                   y_expand_add = c(1, 0.5),
                    post_processing = list(
                        add_custom_theme = list(
                          text=element_text(size = 14),
-                         axis.text.x = element_text(size = 14, angle = -90,vjust = 0.5),
+                           axis.text.x = element_text(size = 14,
+                                                      angle = -90,
+                                                      vjust = 0.5),
+                         legend.position="top")
+                   )) 
+```
+
+## Relative RMSPE
+
+```{r}
+#| fig-cap: "Scenario B with a linearly increasing proportion of zero-inflation of up to 75%"
+tbl_perf %>%
+  dplyr::select(scenario, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, relRMSPE.est) %>%
+  filter(scenario %in% "B"  & propzi == 0.75 & revzi == TRUE & model != "oracle") %>%
+  mutate(n = to_factor(n)) %>%
+  arrange(model, penalty) %>%
+  pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = relRMSPE.est, names_from = model) %>%
+  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , 
+                   grid_rows = "struczero",
+                   steps_y_base = 0.5, steps_y_height = 0.05, 
+                   steps_names = "Residual variance",
+                   x_name = "Sample size", y_name = "Averaged relative RMSPE",
+                   spu_x_shift = 1.5,
+                   colors = ggcols[-1],
+                   steps_values_annotate = TRUE, steps_annotation_size = 2.5,
+                   hline_intercept = 1,
+                   y_expand_add = c(0.5, 0.25),
+                   post_processing = list(
+                       add_custom_theme = list(
+                         text=element_text(size = 14),
+                           axis.text.x = element_text(size = 14,
+                                                      angle = -90,
+                                                      vjust = 0.5),
                          legend.position="top")
                    )) 
 ```
 
 ```{r}
+#| fig-cap: "Scenario B with a linearly increasing proportion of zero-inflation of up tp 25%"
 tbl_perf %>%
-  dplyr::select(scenario, a, n, p, epslvl, propzi, struczero, model, penalty, CS.est) %>%
-  filter(scenario %in% "B" & penalty %in% c("combined", "-") & propzi == 0.75 & struczero == 0.33) %>%
+  dplyr::select(scenario, UDdepen, n, epslvl, propzi, struczero, revzi, model,
+                penalty, relRMSPE.est) %>%
+  filter(scenario %in% "B" & propzi == 0.25 & revzi == TRUE & model != "oracle") %>%
   mutate(n = to_factor(n)) %>%
   arrange(model, penalty) %>%
-  pivot_wider(id_cols = c(a, n, p, epslvl), values_from = CS.est, names_from = model) %>%
-  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="p" ,
-                   steps_y_base = 0, steps_y_height = 0.05, grid_rows = "a",
+  pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = relRMSPE.est, names_from = model) %>%
+  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , 
+                   grid_rows = "struczero",
+                   steps_y_base = 0.75, steps_y_height = 0.05, 
+                   steps_names = "Residual variance",
+                   x_name = "Sample size", y_name = "Averaged relative RMSPE",
+                   spu_x_shift = 1.5,
+                   colors = ggcols[-1],
+                   steps_values_annotate = TRUE, steps_annotation_size = 2.5,
+                   hline_intercept = 1,
+                   y_expand_add = c(0.5, 0.25),
+                   post_processing = list(
+                       add_custom_theme = list(
+                         text=element_text(size = 14),
+                           axis.text.x = element_text(size = 14,
+                                                      angle = -90,
+                                                      vjust = 0.5),
+                         legend.position="top")
+                   )) 
+```
+
+```{r}
+#| fig-cap: "Scenario B with a linearly decreasing proportion of zero-inflation of starting from 75%"
+tbl_perf %>%
+  dplyr::select(scenario, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, relRMSPE.est) %>%
+  filter(scenario %in% "B" & propzi == 0.75 & revzi == FALSE & model != "oracle") %>%
+  mutate(n = to_factor(n)) %>%
+  arrange(model, penalty) %>%
+  pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = relRMSPE.est, names_from = model) %>%
+  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "struczero",
+                   steps_y_base = 0.5, steps_y_height = 0.1, 
+                   steps_names = "Residual variance",
+                   x_name = "Sample size", y_name = "Averaged relative RMSPE",
+                   spu_x_shift = 1.5,
+                   colors = ggcols[-1],
+                   steps_values_annotate = TRUE, steps_annotation_size = 2.5,
+                   hline_intercept = 1,
+                   y_expand_add = c(0.5, 0.25),
+                   post_processing = list(
+                       add_custom_theme = list(
+                         text=element_text(size = 14),
+                           axis.text.x = element_text(size = 14,
+                                                      angle = -90,
+                                                      vjust = 0.5),
+                         legend.position="top")
+                   )) 
+```
+
+```{r}
+#| fig-cap: "Scenario B with a linearly decreasing proportion of zero-inflation of starting from 25%"
+tbl_perf %>%
+  dplyr::select(scenario, UDdepen, n, epslvl, propzi, struczero, revzi, model,
+                penalty, relRMSPE.est) %>%
+  filter(scenario %in% "B" & propzi == 0.25 & revzi == FALSE & model != "oracle") %>%
+  mutate(n = to_factor(n)) %>%
+  arrange(model, penalty) %>%
+  pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = relRMSPE.est, names_from = model) %>%
+  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "struczero",
+                   steps_y_base = 0.5, steps_y_height = 0.1, 
+                   steps_names = "Residual variance",
+                   x_name = "Sample size", y_name = "Averaged relative RMSPE",
+                   spu_x_shift = 1.5,
+                   colors = ggcols[-1],
+                   steps_values_annotate = TRUE, steps_annotation_size = 2.5,
+                   hline_intercept = 1,
+                   y_expand_add = c(1, 0.5),
+                   post_processing = list(
+                       add_custom_theme = list(
+                         text=element_text(size = 14),
+                           axis.text.x = element_text(size = 14,
+                                                      angle = -90,
+                                                      vjust = 0.5),
+                         legend.position="top")
+                   )) 
+```
+
+## Calibration
+
+```{r}
+#| fig-cap: "Scenario B with a linearly increasing proportion of zero-inflation of up to 75%"
+tbl_perf %>%
+  dplyr::select(scenario, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, CS.est) %>%
+  filter(scenario %in% "B" & propzi == 0.75 & revzi == TRUE) %>%
+  mutate(n = to_factor(n)) %>%
+  arrange(model, penalty) %>%
+  pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = CS.est, names_from = model) %>%
+  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "struczero",
+                   steps_y_base = -0.1, steps_y_height = 0.05, 
                    steps_names = "Residual variance",
                    x_name = "Sample size", y_name = "Averaged CS",
                    spu_x_shift = 1.5,
-                   grid_scales="free_y",
                    colors = ggcols,
-                   steps_values_annotate = TRUE, steps_annotation_size = 3,
-                   hline_intercept = 0,
+                   steps_values_annotate = TRUE, steps_annotation_size = 2.5,
+                   hline_intercept = 1,
+                   y_expand_add = c(0.5, 0.15),
+                   post_processing = list(
+                       add_custom_theme = list(
+                         text=element_text(size = 14),
+                           axis.text.x = element_text(size = 14,
+                                                      angle = -90,
+                                                      vjust = 0.5),
+                         legend.position="top")
+                   )) 
+```
+
+```{r}
+#| fig-cap: "Scenario B with a linearly increasing proportion of zero-inflation of up to 25%"
+tbl_perf %>%
+  dplyr::select(scenario,  UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, CS.est) %>%
+  filter(scenario %in% "B" & propzi == 0.25 & revzi == TRUE) %>%
+  mutate(n = to_factor(n)) %>%
+  arrange(model, penalty) %>%
+  pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = CS.est, names_from = model) %>%
+  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "struczero",
+                   steps_y_base = 0.25, steps_y_height = 0.05, 
+                   steps_names = "Residual variance",
+                   x_name = "Sample size", y_name = "Averaged CS",
+                   spu_x_shift = 1.5,
+                   colors = ggcols,
+                   steps_values_annotate = TRUE, steps_annotation_size = 2.5,
+                   hline_intercept = 1,
                    y_expand_add = c(0.25, 0.25),
                    post_processing = list(
                        add_custom_theme = list(
                          text=element_text(size = 14),
-                         axis.text.x = element_text(size = 14, angle = -90,vjust = 0.5),
+                           axis.text.x = element_text(size = 14,
+                                                      angle = -90,
+                                                      vjust = 0.5),
                          legend.position="top")
                    )) 
 ```
-:::
 
-# Variable selection
+```{r}
+#| fig-cap: "Scenario B with a linearly decreasing proportion of zero-inflation of starting from 75%"
+tbl_perf %>%
+  dplyr::select(scenario,  UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, CS.est) %>%
+  filter(scenario %in% "B"  & propzi == 0.75 & revzi == FALSE) %>%
+  mutate(n = to_factor(n)) %>%
+  arrange(model, penalty) %>%
+  pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = CS.est, names_from = model) %>%
+  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "struczero",
+                   steps_y_base = 0.0, steps_y_height = 0.05, 
+                   steps_names = "Residual variance",
+                   x_name = "Sample size", y_name = "Averaged CS",
+                   spu_x_shift = 1.5,
+                   colors = ggcols,
+                   steps_values_annotate = TRUE, steps_annotation_size = 2.5,
+                   hline_intercept = 1,
+                   y_expand_add = c(1, 0.25),
+                   post_processing = list(
+                       add_custom_theme = list(
+                         text=element_text(size = 14),
+                           axis.text.x = element_text(size = 14,
+                                                      angle = -90,
+                                                      vjust = 0.5),
+                         legend.position="top")
+                   )) 
+```
 
-## False discovery rate
+```{r}
+#| fig-cap: "Scenario B with a linearly decreasing proportion of zero-inflation of starting from 25%"
+tbl_perf %>%
+  dplyr::select(scenario, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, CS.est) %>%
+  filter(scenario %in% "B" & propzi == 0.25 & revzi == FALSE) %>%
+  mutate(n = to_factor(n)) %>%
+  arrange(model, penalty) %>%
+  pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = CS.est, names_from = model) %>%
+  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "struczero",
+                   steps_y_base = 0.25, steps_y_height = 0.05, 
+                   steps_names = "Residual variance",
+                   x_name = "Sample size", y_name = "Averaged CS",
+                   spu_x_shift = 1.5,
+                   colors = ggcols,
+                   steps_values_annotate = TRUE, steps_annotation_size = 2.5,
+                   hline_intercept = 1,
+                   y_expand_add = c(0.5, 0.15),
+                   post_processing = list(
+                       add_custom_theme = list(
+                         text=element_text(size = 14),
+                           axis.text.x = element_text(size = 14,
+                                                      angle = -90,
+                                                      vjust = 0.5),
+                         legend.position="top")
+                   )) 
+```
+
+## R2
+
+```{r}
+#| fig-cap: "Scenario B with a linearly increasing proportion of zero-inflation of up to 75%"
+tbl_perf %>%
+  dplyr::select(scenario, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, R2.est) %>%
+  filter(scenario %in% "B" & propzi == 0.75 & revzi == TRUE ) %>%
+  mutate(n = to_factor(n)) %>%
+  arrange(model, penalty) %>%
+  pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = R2.est, names_from = model) %>%
+  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "struczero",
+                   steps_y_base = -0.15, steps_y_height = 0.05, 
+                   steps_names = "Residual variance",
+                   x_name = "Sample size", y_name = "Averaged R2",
+                   spu_x_shift = 1.5,
+                   colors = ggcols,
+                   steps_values_annotate = TRUE, steps_annotation_size = 2.5,
+                   hline_intercept = 0,
+                   y_expand_add = c(0.15, 0.15),
+                   post_processing = list(
+                       add_custom_theme = list(
+                         text=element_text(size = 14),
+                           axis.text.x = element_text(size = 14,
+                                                      angle = -90,
+                                                      vjust = 0.5),
+                         legend.position="top")
+                   )) 
+```
+
+```{r}
+#| fig-cap: "Scenario B with a linearly increasing proportion of zero-inflation of up to 25%"
+tbl_perf %>%
+  dplyr::select(scenario, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, R2.est) %>%
+  filter(scenario %in% "B" & propzi == 0.25 & revzi == TRUE) %>%
+  mutate(n = to_factor(n)) %>%
+  arrange(model, penalty) %>%
+  pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = R2.est, names_from = model) %>%
+  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "struczero",
+                   steps_y_base = -0.15, steps_y_height = 0.05, 
+                   steps_names = "Residual variance",
+                   x_name = "Sample size", y_name = "Averaged R2",
+                   spu_x_shift = 1.5,
+                   colors = ggcols,
+                   steps_values_annotate = TRUE, steps_annotation_size = 2.5,
+                   hline_intercept = 0,
+                   y_expand_add = c(0.15, 0.15),
+                   post_processing = list(
+                       add_custom_theme = list(
+                         text=element_text(size = 14),
+                           axis.text.x = element_text(size = 14,
+                                                      angle = -90,
+                                                      vjust = 0.5),
+                         legend.position="top")
+                   )) 
+```
+
+```{r}
+#| fig-cap: "Scenario B with a linearly decreasing proportion of zero-inflation of starting from 75%"
+tbl_perf %>%
+  dplyr::select(scenario, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, R2.est) %>%
+  filter(scenario %in% "B" & propzi == 0.75 & revzi == FALSE) %>%
+  mutate(n = to_factor(n)) %>%
+  arrange(model, penalty) %>%
+  pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = R2.est, names_from = model) %>%
+  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "struczero",
+                   steps_y_base = -0.15, steps_y_height = 0.05, 
+                   steps_names = "Residual variance",
+                   x_name = "Sample size", y_name = "Averaged R2",
+                   spu_x_shift = 1.5,
+                   colors = ggcols,
+                   steps_values_annotate = TRUE, steps_annotation_size = 2.5,
+                   hline_intercept = 0,
+                   y_expand_add = c(0.15, 0.15),
+                   post_processing = list(
+                       add_custom_theme = list(
+                         text=element_text(size = 14),
+                           axis.text.x = element_text(size = 14,
+                                                      angle = -90,
+                                                      vjust = 0.5),
+                         legend.position="top")
+                   )) 
+```
+
+```{r}
+#| fig-cap: "Scenario B with a linearly decreasing proportion of zero-inflation of starting from 25%"
+tbl_perf %>%
+  dplyr::select(scenario, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, R2.est) %>%
+  filter(scenario %in% "B" & propzi == 0.25 & revzi == FALSE) %>%
+  mutate(n = to_factor(n)) %>%
+  arrange(model, penalty) %>%
+  pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = R2.est, names_from = model) %>%
+  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "struczero",
+                   steps_y_base = -0.15, steps_y_height = 0.05, 
+                   steps_names = "Residual variance",
+                   x_name = "Sample size", y_name = "Averaged R2",
+                   spu_x_shift = 1.5,
+                   colors = ggcols,
+                   steps_values_annotate = TRUE, steps_annotation_size = 2.5,
+                   hline_intercept = 0,
+                   y_expand_add = c(0.15, 0.15),
+                   post_processing = list(
+                       add_custom_theme = list(
+                         text=element_text(size = 14),
+                           axis.text.x = element_text(size = 14,
+                                                      angle = -90,
+                                                      vjust = 0.5),
+                         legend.position="top")
+                   )) 
+```
+
+## Variable selection
+
+### Variable inclusion
+
+```{r}
+#| fig-cap: "Scenario B with a linearly increasing proportion of zero-inflation of up to 75%"
+tbl_perf %>%
+  dplyr::select(scenario, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, df.est) %>%
+  filter(scenario %in% "B" & propzi == 0.75 & revzi == TRUE ) %>%
+  mutate(n = to_factor(n)) %>%
+  arrange(model, penalty) %>%
+  pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = df.est, names_from = model) %>%
+  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "struczero",
+                   steps_y_base = -25, steps_y_height = 5, 
+                   steps_names = "Residual variance",
+                   x_name = "Sample size", y_name = "Averaged number of incuded peptides",
+                   spu_x_shift = 1.5,
+                   colors = ggcols,
+                   steps_values_annotate = TRUE, steps_annotation_size = 2.5,
+                   hline_intercept = 0,
+                   y_expand_add = c(50, 15),
+                   post_processing = list(
+                       add_custom_theme = list(
+                         text=element_text(size = 14),
+                           axis.text.x = element_text(size = 14,
+                                                      angle = -90,
+                                                      vjust = 0.5),
+                         legend.position="top")
+                   )) 
+```
+
+```{r}
+#| fig-cap: "Scenario B with a linearly increasing proportion of zero-inflation of up to 25%"
+tbl_perf %>%
+  dplyr::select(scenario, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, df.est) %>%
+  filter(scenario %in% "B"  & propzi == 0.25 & revzi == TRUE ) %>%
+  mutate(n = to_factor(n)) %>%
+  arrange(model, penalty) %>%
+  pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = df.est, names_from = model) %>%
+  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "struczero",
+                   steps_y_base = -25, steps_y_height = 5, 
+                   steps_names = "Residual variance",
+                   x_name = "Sample size", y_name = "Averaged number of incuded peptides",
+                   spu_x_shift = 1.5,
+                   colors = ggcols,
+                   steps_values_annotate = TRUE, steps_annotation_size = 2.5,
+                   hline_intercept = 0,
+                   y_expand_add = c(50, 15),
+                   post_processing = list(
+                       add_custom_theme = list(
+                         text=element_text(size = 14),
+                           axis.text.x = element_text(size = 14,
+                                                      angle = -90,
+                                                      vjust = 0.5),
+                         legend.position="top")
+                   )) 
+```
+
+```{r}
+#| fig-cap: "Scenario B with a denearly increasing proportion of zero-inflation starting with 75%"
+tbl_perf %>%
+  dplyr::select(scenario, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, df.est) %>%
+  filter(scenario %in% "B" & propzi == 0.75 & revzi == FALSE) %>%
+  mutate(n = to_factor(n)) %>%
+  arrange(model, penalty) %>%
+  pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = df.est, names_from = model) %>%
+  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "struczero",
+                   steps_y_base = -25, steps_y_height = 5, 
+                   steps_names = "Residual variance",
+                   x_name = "Sample size", y_name = "Averaged number of incuded peptides",
+                   spu_x_shift = 1.5,
+                   colors = ggcols,
+                   steps_values_annotate = TRUE, steps_annotation_size = 2.5,
+                   hline_intercept = 0,
+                   y_expand_add = c(50, 15),
+                   post_processing = list(
+                       add_custom_theme = list(
+                         text=element_text(size = 14),
+                           axis.text.x = element_text(size = 14,
+                                                      angle = -90,
+                                                      vjust = 0.5),
+                         legend.position="top")
+                   )) 
+```
+
+```{r}
+#| fig-cap: "Scenario B with a denearly increasing proportion of zero-inflation starting with 25%"
+tbl_perf %>%
+  dplyr::select(scenario, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, df.est) %>%
+  filter(scenario %in% "B" & propzi == 0.25 & revzi == FALSE ) %>%
+  mutate(n = to_factor(n)) %>%
+  arrange(model, penalty) %>%
+  pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = df.est, names_from = model) %>%
+  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "struczero",
+                   steps_y_base = -25, steps_y_height = 5, 
+                   steps_names = "Residual variance",
+                   x_name = "Sample size", y_name = "Averaged number of incuded peptides",
+                   spu_x_shift = 1.5,
+                   colors = ggcols,
+                   steps_values_annotate = TRUE, steps_annotation_size = 2.5,
+                   hline_intercept = 0,
+                   y_expand_add = c(50, 15),
+                   post_processing = list(
+                       add_custom_theme = list(
+                         text=element_text(size = 14),
+                           axis.text.x = element_text(size = 14,
+                                                      angle = -90,
+                                                      vjust = 0.5),
+                         legend.position="top")
+                   )) 
+```
+
+### Discovery rates
 
 ::: panel-tabset
-Proportion of zero-inflation: 0.25
-
-### Scenario A
+#### TPDR
 
 ```{r}
+#| fig-cap: "Scenario B with a denearly increasing proportion of zero-inflation starting with 75%"
 tbl_allsel %>%
-  dplyr::select(scenario, a, n, p, epslvl, propzi, struczero, model, penalty, FPDR) %>%
-  filter(scenario %in% "A" & penalty %in% c("combined", "-") & propzi == 0.25 & struczero == 0.33) %>%
+  dplyr::select(scenario, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, TPDR) %>%
+  filter(scenario %in% "B" & propzi == 0.75 & revzi == TRUE) %>%
   mutate(n = to_factor(n)) %>%
   arrange(model, penalty) %>%
-  pivot_wider(id_cols = c(a, n, p, epslvl), values_from = FPDR, names_from = model) %>%
-  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="p" , grid_rows = "a",
-                   steps_y_base = 0, steps_y_height = 0.05,
+  pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = TPDR, names_from = model) %>%
+  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "struczero",
+                   steps_y_base = -0.1, steps_y_height = 0.025, 
                    steps_names = "Residual variance",
-                   x_name = "Sample size", y_name = "FPDR",
+                   x_name = "Sample size", y_name = "True-postive discovery rate",
                    spu_x_shift = 1.5,
-                   grid_scales="free_y",
-                   colors = ggcols[-c(1,7)],
-                   steps_values_annotate = TRUE, steps_annotation_size = 3,
+                   colors = ggcols,
+                   steps_values_annotate = TRUE, steps_annotation_size = 2.5,
                    hline_intercept = 0,
-                   y_expand_add = c(0.25, 0.25),
+                   y_expand_add = c(0.15, 0.1),
                    post_processing = list(
                        add_custom_theme = list(
                          text=element_text(size = 14),
-                         axis.text.x = element_text(size = 14, angle = -90,vjust = 0.5),
+                           axis.text.x = element_text(size = 14,
+                                                      angle = -90,
+                                                      vjust = 0.5),
                          legend.position="top")
                    )) 
 ```
 
-### Scenario B
+#### TNDR
 
 ```{r}
+#| fig-cap: "Scenario B with a denearly increasing proportion of zero-inflation starting with 75%"
 tbl_allsel %>%
-  dplyr::select(scenario, a, n, p, epslvl, propzi, struczero, model, penalty, FPDR) %>%
-  filter(scenario %in% "B" & penalty %in% c("combined", "-") & propzi == 0.25 & struczero == 0.33) %>%
+  dplyr::select(scenario, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, TNDR) %>%
+  filter(scenario %in% "B" & propzi == 0.75 & revzi == TRUE ) %>%
   mutate(n = to_factor(n)) %>%
   arrange(model, penalty) %>%
-  pivot_wider(id_cols = c(a, n, p, epslvl), values_from = FPDR, names_from = model) %>%
-  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="p" , grid_rows = "a",
-                   steps_y_base = 0, steps_y_height = 0.05,
+  pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = TNDR, names_from = model) %>%
+  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "struczero",
+                   steps_y_base = -0.1, steps_y_height = 0.025, 
                    steps_names = "Residual variance",
-                   x_name = "Sample size", y_name = "FPDR",
+                   x_name = "Sample size", y_name = "True-postive discovery rate",
                    spu_x_shift = 1.5,
-                   grid_scales="free_y",
-                   colors = ggcols[-c(1,7)],
-                   steps_values_annotate = TRUE, steps_annotation_size = 3,
+                   colors = ggcols,
+                   steps_values_annotate = TRUE, steps_annotation_size = 2.5,
                    hline_intercept = 0,
-                   y_expand_add = c(0.25, 0.25),
+                   y_expand_add = c(0.15, 0.1),
                    post_processing = list(
                        add_custom_theme = list(
                          text=element_text(size = 14),
-                         axis.text.x = element_text(size = 14, angle = -90,vjust = 0.5),
-                         legend.position="top")
-                   )) 
-```
-:::
-
-::: panel-tabset
-Proportion of zero-inflation: 0.5
-
-### Scenario A
-
-```{r}
-tbl_allsel %>%
-  dplyr::select(scenario, a, n, p, epslvl, propzi, struczero, model, penalty, FPDR) %>%
-  filter(scenario %in% "A" & penalty %in% c("combined", "-") & propzi == 0.5 & struczero == 0.33) %>%
-  mutate(n = to_factor(n)) %>%
-  arrange(model, penalty) %>%
-  pivot_wider(id_cols = c(a, n, p, epslvl), values_from = FPDR, names_from = model) %>%
-  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="p" , grid_rows = "a",
-                   steps_y_base = 0, steps_y_height = 0.05,
-                   steps_names = "Residual variance",
-                   x_name = "Sample size", y_name = "FPDR",
-                   spu_x_shift = 1.5,
-                   grid_scales="free_y",
-                   colors = ggcols[-c(1,7)],
-                   steps_values_annotate = TRUE, steps_annotation_size = 3,
-                   hline_intercept = 0,
-                   y_expand_add = c(0.25, 0.25),
-                   post_processing = list(
-                       add_custom_theme = list(
-                         text=element_text(size = 14),
-                         axis.text.x = element_text(size = 14, angle = -90,vjust = 0.5),
+                           axis.text.x = element_text(size = 14,
+                                                      angle = -90,
+                                                      vjust = 0.5),
                          legend.position="top")
                    )) 
 ```
 
-### Scenario B
+#### FPDR
 
 ```{r}
+#| fig-cap: "Scenario B with a denearly increasing proportion of zero-inflation starting with 75%"
 tbl_allsel %>%
-  dplyr::select(scenario, a, n, p, epslvl, propzi, struczero, model, penalty, FPDR) %>%
-  filter(scenario %in% "B" & penalty %in% c("combined", "-") & propzi == 0.5 & struczero == 0.33) %>%
+  dplyr::select(scenario, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, FPDR) %>%
+  filter(scenario %in% "B" & propzi == 0.75 & revzi == TRUE ) %>%
   mutate(n = to_factor(n)) %>%
   arrange(model, penalty) %>%
-  pivot_wider(id_cols = c(a, n, p, epslvl), values_from = FPDR, names_from = model) %>%
-  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="p" , grid_rows = "a",
-                   steps_y_base = 0, steps_y_height = 0.05,
+  pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = FPDR, names_from = model) %>%
+  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "struczero",
+                   steps_y_base = -0.1, steps_y_height = 0.025, 
                    steps_names = "Residual variance",
-                   x_name = "Sample size", y_name = "FPDR",
+                   x_name = "Sample size", y_name = "True-postive discovery rate",
                    spu_x_shift = 1.5,
-                   grid_scales="free_y",
-                   colors = ggcols[-c(1,7)],
-                   steps_values_annotate = TRUE, steps_annotation_size = 3,
+                   colors = ggcols,
+                   steps_values_annotate = TRUE, steps_annotation_size = 2.5,
                    hline_intercept = 0,
-                   y_expand_add = c(0.25, 0.25),
+                   y_expand_add = c(0.1, 0.1),
                    post_processing = list(
                        add_custom_theme = list(
                          text=element_text(size = 14),
-                         axis.text.x = element_text(size = 14, angle = -90,vjust = 0.5),
-                         legend.position="top")
-                   )) 
-```
-:::
-
-::: panel-tabset
-### Scenario A
-
-```{r}
-tbl_allsel %>%
-  dplyr::select(scenario, a, n, p, epslvl, propzi, struczero, model, penalty, FPDR) %>%
-  filter(scenario %in% "A" & penalty %in% c("combined", "-") & propzi == 0.75 & struczero == 0.33) %>%
-  mutate(n = to_factor(n)) %>%
-  arrange(model, penalty) %>%
-  pivot_wider(id_cols = c(a, n, p, epslvl), values_from = FPDR, names_from = model) %>%
-  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="p" , grid_rows = "a",
-                   steps_y_base = 0, steps_y_height = 0.05,
-                   steps_names = "Residual variance",
-                   x_name = "Sample size", y_name = "FPDR",
-                   spu_x_shift = 1.5,
-                   grid_scales="free_y",
-                   colors = ggcols[-c(1,7)],
-                   steps_values_annotate = TRUE, steps_annotation_size = 3,
-                   hline_intercept = 0,
-                   y_expand_add = c(0.25, 0.25),
-                   post_processing = list(
-                       add_custom_theme = list(
-                         text=element_text(size = 14),
-                         axis.text.x = element_text(size = 14, angle = -90,vjust = 0.5),
+                           axis.text.x = element_text(size = 14,
+                                                      angle = -90,
+                                                      vjust = 0.5),
                          legend.position="top")
                    )) 
 ```
 
-### Scenario B
+#### FNDR
 
 ```{r}
+#| fig-cap: "Scenario B with a denearly increasing proportion of zero-inflation starting with 75%"
 tbl_allsel %>%
-  dplyr::select(scenario, a, n, p, epslvl, propzi, struczero, model, penalty, FPDR) %>%
-  filter(scenario %in% "B" & penalty %in% c("combined", "-") & propzi == 0.75 & struczero == 0.33) %>%
+  dplyr::select(scenario, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, FNDR) %>%
+  filter(scenario %in% "B" & propzi == 0.75 & revzi == TRUE) %>%
   mutate(n = to_factor(n)) %>%
   arrange(model, penalty) %>%
-  pivot_wider(id_cols = c(a, n, p, epslvl), values_from = FPDR, names_from = model) %>%
-  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="p" , grid_rows = "a",
-                   steps_y_base = 0, steps_y_height = 0.05,
+  pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = FNDR, names_from = model) %>%
+  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "struczero",
+                   steps_y_base = -0.1, steps_y_height = 0.025, 
                    steps_names = "Residual variance",
-                   x_name = "Sample size", y_name = "FPDR",
+                   x_name = "Sample size", y_name = "False-negative discovery rate",
                    spu_x_shift = 1.5,
-                   grid_scales="free_y",
-                   colors = ggcols[-c(1,7)],
-                   steps_values_annotate = TRUE, steps_annotation_size = 3,
+                   colors = ggcols,
+                   steps_values_annotate = TRUE, steps_annotation_size = 2.5,
                    hline_intercept = 0,
-                   y_expand_add = c(0.25, 0.25),
+                   y_expand_add = c(0.15, 0.1),
                    post_processing = list(
                        add_custom_theme = list(
                          text=element_text(size = 14),
-                         axis.text.x = element_text(size = 14, angle = -90,vjust = 0.5),
+                           axis.text.x = element_text(size = 14,
+                                                      angle = -90,
+                                                      vjust = 0.5),
                          legend.position="top")
                    )) 
 ```
 :::
-
-## True discovery rate
-
-```{r}
-tbl_allsel %>%
-  dplyr::select(scenario, a, n, p, epslvl, propzi, struczero, model, penalty, TPDR) %>%
-  filter(scenario %in% "A" & penalty %in% c("combined", "-") & propzi == 0.75 & struczero == 0.33) %>%
-  mutate(n = to_factor(n)) %>%
-  arrange(model, penalty) %>%
-  pivot_wider(id_cols = c(a, n, p, epslvl), values_from = TPDR, names_from = model) %>%
-  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="p" , grid_rows = "a",
-                   steps_y_base = 0, steps_y_height = 0.05,
-                   steps_names = "Residual variance",
-                   x_name = "Sample size", y_name = "TPDR",
-                   spu_x_shift = 1.5,
-                   grid_scales="free_y",
-                   colors = ggcols[-c(1,7)],
-                   steps_values_annotate = TRUE, steps_annotation_size = 3,
-                   hline_intercept = 0,
-                   y_expand_add = c(0.25, 0.25),
-                   post_processing = list(
-                       add_custom_theme = list(
-                         text=element_text(size = 14),
-                         axis.text.x = element_text(size = 14, angle = -90,vjust = 0.5),
-                         legend.position="top")
-                   )) 
-```
-
-```{r}
-tbl_allsel %>%
-  dplyr::select(scenario, a, n, p, epslvl, propzi, struczero, model, penalty, TPDR) %>%
-  filter(scenario %in% "B" & penalty %in% c("combined", "-") & propzi == 0.75 & struczero == 0.33) %>%
-  mutate(n = to_factor(n)) %>%
-  arrange(model, penalty) %>%
-  pivot_wider(id_cols = c(a, n, p, epslvl), values_from = TPDR, names_from = model) %>%
-  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="p" , grid_rows = "a",
-                   steps_y_base = 0, steps_y_height = 0.05,
-                   steps_names = "Residual variance",
-                   x_name = "Sample size", y_name = "TPDR",
-                   spu_x_shift = 1.5,
-                   grid_scales="free_y",
-                   colors = ggcols[-c(1,7)],
-                   steps_values_annotate = TRUE, steps_annotation_size = 3,
-                   hline_intercept = 0,
-                   y_expand_add = c(0.25, 0.25),
-                   post_processing = list(
-                       add_custom_theme = list(
-                         text=element_text(size = 14),
-                         axis.text.x = element_text(size = 14, angle = -90,vjust = 0.5),
-                         legend.position="top")
-                   )) 
-```
