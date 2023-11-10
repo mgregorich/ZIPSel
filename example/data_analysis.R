@@ -92,6 +92,7 @@ data_allpeptides <- data_mos[,7:ncol(data_mos)]
 colnames(data_allpeptides) <- paste0("P",1:ncol(data_allpeptides))
 rownames(data_allpeptides) <- paste0("N",1:nrow(data_allpeptides))
 data_allpeptides <- apply(as.matrix(data_allpeptides), 2, as.numeric)
+data_allpeptides <- scale(data_allpeptides)
 clin.vars <- c("Age", "Sex", "eGFR")
 
 # Data preparation

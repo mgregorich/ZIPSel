@@ -24,7 +24,7 @@ format:
 rm(list = ls())
 
 pacman::p_load(ggplot2, parallel, future.apply, stringr, 
-               dplyr, tidyr, tableone, gt,
+               dplyr, tidyr, tableone, gt, forcats,
                glmnet, patchwork, RColorBrewer)
 
 source(here::here("src","functions_aux.R"))
@@ -40,7 +40,7 @@ source(here::here("src","functions_aux.R"))
 set.seed(12345)
 
 ncv = 10
-nR  = 2
+nR  = 1
 propz = 0.75
 data_mos <- readRDS(here::here("data", "mosaique", "Large_Mariella.rds"))
 data_peptides <- data_mos[,7:ncol(data_mos)]
@@ -159,23 +159,8 @@ p_together
 
 ```{r}
 data_cor <- cor(data_peptides)
-melted_cormat <- reshape2::melt(data_cor) %>%
-  data.frame() %>%
-  mutate(value=as.numeric(value)) 
-
-ggplot(data=melted_cormat, aes(x=Var1, y=Var2, fill=value)) + 
-  geom_tile() +
-  scale_fill_gradient2(low = "blue", high = "red", mid = "white", 
-                       midpoint = 0, limit = c(-1,1), space = "Lab", 
-                       name="") +
-  scale_x_continuous("Candidate variables", expand=c(0,0)) +
-  scale_y_continuous("Candidate variables", expand=c(0,0)) +
-  theme_bw() 
-
-
 pheatmap::pheatmap(data_cor)
 ```
-
 
 ## Example of data transformations
 
@@ -236,8 +221,6 @@ ggsave(file = here::here("output","example","fig_dist_C2.tiff"), plot = p4,
 # Methods
 
 ## Models
-
-### Algorithmic models
 
 ```{r models}
 # CV Predictions
@@ -486,57 +469,6 @@ p1 + p2 + p3
 ```
 
 ```{r}
-#| label: fig-ridgecoefcp
-#| fig-cap: "Component-specific coefficients of the ridge regression model ordered by D and U, respectively." 
-tbl.coef.ridge.cp <- data.frame("peptide" = str_remove_all(names(list_coef$ridge.cp)[2:(p+1)], "u.|d."), 
-                                "U" = list_coef$ridge.cp[2:(p+1)], "D" = list_coef$ridge.cp[(p+2):(2*p+1)]) 
-
-p1 <- tbl.coef.ridge.cp %>%
-  arrange(D) %>%
-  mutate(coefid = 1:p) %>%
-  pivot_longer(cols = c(U, D), names_to = "component", values_to = "coef") %>%
-  ggplot(aes(x = coef, y = coefid, group = component, col = component)) +
-  geom_point(shape = 1) +
-  scale_x_continuous("Coefficient") +
-  scale_y_continuous("Variable index") +
-  geom_line(orientation = "y") +
-  geom_vline(xintercept = 0, linetype = 2) +
-  scale_color_manual("Component", values = c("grey20", "red3")) +
-  ggtitle("Ordered by D") +
-  theme_bw() +
-  theme(plot.title = element_text(hjust = 0.5), legend.position = "None")
-p2 <- tbl.coef.ridge.cp %>%
-  arrange(U) %>%
-  mutate(coefid = 1:p) %>%
-  pivot_longer(cols = c(U, D), names_to = "component", values_to = "coef") %>%
-  ggplot(aes(x = coef, y = coefid, group = component, col = component)) +
-  geom_point(shape = 1) +
-  scale_x_continuous("Coefficient") +
-  scale_y_continuous("Variable index") +
-  geom_line(orientation = "y") +
-  geom_vline(xintercept = 0, linetype = 2) +
-  scale_color_manual("Component", values = c("grey20", "red3")) +
-  ggtitle("Ordered by U") +
-  theme_bw() +
-  theme(plot.title = element_text(hjust = 0.5), legend.position = "None")
-p3 <- tbl.coef.ridge.cp %>%
-  arrange(peptide) %>%
-  mutate(coefid = 1:p) %>%
-  pivot_longer(cols = c(U, D), names_to = "component", values_to = "coef") %>%
-  ggplot(aes(x = coef, y = coefid, group = component, col = component)) +
-  geom_point(shape = 1) +
-  scale_x_continuous("Coefficient") +
-  scale_y_continuous("Variable index") +
-  geom_line(orientation = "y") +
-  geom_vline(xintercept = 0, linetype = 2) +
-  scale_color_manual("Component", values = c("grey20", "red3")) +
-  ggtitle("Unordered") +
-  theme_bw() +
-  theme(plot.title = element_text(hjust = 0.5))
-p1 + p2 + p3
-```
-
-```{r}
 #| label: fig-lridgecoefcb 
 #| fig-cap: "Component-specific coefficients of the lasso-ridge regression model ordered by the magnitude of the coefficients corresponding to D and U, respectively." 
 
@@ -589,13 +521,13 @@ p1 + p2 + p3
 ```
 
 ```{r}
-#| label: fig-lridgecoefcp 
-#| fig-cap: "Component-specific coefficients of the lasso-ridge regression model ordered by the magnitude of the coefficients corresponding to D and U, respectively." 
+#| label: fig-rlassocoefcb 
+#| fig-cap: "Coefficients of the ridge-lasso regression model ordered by the magnitude." 
+tbl.coef.rlasso.cb <- data.frame("peptide" = str_remove_all(names(list_coef$rlasso.cb)[2:(p+1)], "x.|d."), 
+                                 "U" = list_coef$rlasso.cb[2:(p+1)], 
+                                 "D" = list_coef$rlasso.cb[(p+2):(2*p+1)]) 
 
-tbl.coef.lridge.cp <- data.frame("peptide" = str_remove_all(names(list_coef$lridge.cb)[2:(p+1)], "u.|d."), 
-                                 "U" = list_coef$lridge.cp[2:(p+1)], "D" = list_coef$lridge.cp[(p+2):(2*p+1)]) 
-
-p1 <- tbl.coef.lridge.cp %>%
+p1 <- tbl.coef.rlasso.cb %>%
   arrange(D) %>%
   mutate(coefid = 1:p) %>%
   pivot_longer(cols = c(U, D), names_to = "component", values_to = "coef") %>%
@@ -609,7 +541,7 @@ p1 <- tbl.coef.lridge.cp %>%
   ggtitle("Ordered by D") +
   theme_bw() +
   theme(plot.title = element_text(hjust = 0.5), legend.position = "None")
-p2 <- tbl.coef.lridge.cp %>%
+p2 <- tbl.coef.rlasso.cb %>%
   arrange(U) %>%
   mutate(coefid = 1:p) %>%
   pivot_longer(cols = c(U, D), names_to = "component", values_to = "coef") %>%
@@ -618,12 +550,12 @@ p2 <- tbl.coef.lridge.cp %>%
   scale_x_continuous("Coefficient") +
   scale_y_continuous("Variable index") +
   geom_line(orientation = "y") +
-  geom_vline(xintercept = 0, linetype=2) +
+  geom_vline(xintercept = 0, linetype = 2) +
   scale_color_manual("Component", values = c("grey20", "red3")) +
   ggtitle("Ordered by U") +
   theme_bw() +
   theme(plot.title = element_text(hjust = 0.5), legend.position = "None")
-p3 <- tbl.coef.lridge.cp %>%
+p3 <- tbl.coef.rlasso.cb %>%
   arrange(peptide) %>%
   mutate(coefid = 1:p) %>%
   pivot_longer(cols = c(U, D), names_to = "component", values_to = "coef") %>%
@@ -641,76 +573,11 @@ p1 + p2 + p3
 ```
 
 ```{r}
-#| label: fig-rlassocoefcb 
-#| fig-cap: "Coefficients of the ridge-lasso regression model ordered by the magnitude." 
-tbl.coef.rlasso.cb <- data.frame("peptide" = str_remove_all(names(list_coef$rlasso.cb)[2:(p+1)], "x."), 
-                                 "coef" = list_coef$rlasso.cb[2:(p+1)]) 
-
-p1 <- tbl.coef.rlasso.cb %>%
-  arrange(coef) %>%
-  mutate(coefid = 1:p) %>%
-  ggplot(aes(x = coef, y = coefid)) +
-  geom_point(shape = 1,col = "royalblue3") +
-  scale_x_continuous("Coefficient") +
-  scale_y_continuous("Variable index") +
-  geom_line(orientation = "y",col = "royalblue3") +
-  geom_vline(xintercept = 0, linetype = 2) +
-  ggtitle("Ordered by U") +
-  theme_bw() +
-  theme(plot.title = element_text(hjust = 0.5))
-p2 <- tbl.coef.rlasso.cb %>%
-  arrange(peptide) %>%
-  mutate(coefid = 1:p) %>%
-  ggplot(aes(x = coef, y = coefid)) +
-  geom_point(shape = 1,col = "royalblue3") +
-  scale_x_continuous("Coefficient") +
-  scale_y_continuous("Variable index") +
-  geom_line(orientation = "y",col = "royalblue3") +
-  geom_vline(xintercept = 0, linetype = 2) +
-  ggtitle("Unordered") +
-  theme_bw() +
-  theme(plot.title = element_text(hjust = 0.5))
-p1 + p2
-```
-
-```{r}
-#| label: fig-rlassocoefcp 
-#| fig-cap: "Coefficients of the ridge-lasso regression model ordered by the magnitude." 
-tbl.coef.rlasso.cp <- data.frame("peptide" = str_remove_all(names(list_coef$rlasso.cp)[2:(p+1)], "x."), 
-                                 "coef" = list_coef$rlasso.cp[2:(p+1)]) 
-
-p1 <- tbl.coef.rlasso.cp %>%
-  arrange(coef) %>%
-  mutate(coefid = 1:p) %>%
-  ggplot(aes(x = coef, y = coefid)) +
-  geom_point(shape = 1, col = "royalblue3") +
-  scale_x_continuous("Coefficient") +
-  scale_y_continuous("Variable index") +
-  geom_line(orientation = "y",col = "royalblue3") +
-  geom_vline(xintercept = 0, linetype = 2) +
-  ggtitle("Ordered by U") +
-  theme_bw() +
-  theme(plot.title = element_text(hjust = 0.5))
-p2 <- tbl.coef.rlasso.cp %>%
-  arrange(peptide) %>%
-  mutate(coefid = 1:p) %>%
-  ggplot(aes(x = coef, y = coefid)) +
-  geom_point(shape = 1, col = "royalblue3") +
-  scale_x_continuous("Coefficient") +
-  scale_y_continuous("Variable index") +
-  geom_line(orientation = "y", col = "royalblue3") +
-  geom_vline(xintercept = 0, linetype=2) +
-  ggtitle("Unordered") +
-  theme_bw() +
-  theme(plot.title = element_text(hjust = 0.5))
-p1 + p2
-```
-
-```{r}
 #| label: fig-rgarrotecoefcb 
 #| fig-cap: "Component-specific coefficients of the ridge-garrote regression model ordered by D and U, respectively." 
 tbl.coef.rgarrote.cb <- data.frame("peptide" = str_remove_all(names(list_coef$rgarrote.cb)[2:(p+1)], "u.|d."), 
-                                   "U" = list_coef$rgarrote.cb[2:(p+1)], "D" = list_coef$rgarrote.cb[(p+2):(2*p+1)]) 
+                                   "U" = list_coef$rgarrote.cb[2:(p+1)],
+                                   "D" = list_coef$rgarrote.cb[(p+2):(2*p+1)]) 
 
 p1 <- tbl.coef.rgarrote.cb %>%
   arrange(D) %>%
@@ -754,63 +621,54 @@ p3 <- tbl.coef.rgarrote.cb %>%
   ggtitle("Unordered") +
   theme_bw() +
   theme(plot.title = element_text(hjust = 0.5))
-(p1 + p2 + p3) +
-  plot_layout(guides = "collect") & theme(legend.position = 'bottom')
-```
 
-```{r}
-#| label: fig-rgarrotecoefcp 
-#| fig-cap: "Component-specific coefficients of the ridge-garrote regression model ordered by D and U, respectively." 
-tbl.coef.rgarrote.cp <- data.frame("peptide" = str_remove_all(names(list_coef$rgarrote.cp)[2:(p+1)], "u.|d."), 
-                                   "U" = list_coef$rgarrote.cp[2:(p+1)], "D" = list_coef$rgarrote.cp[(p+2):(2*p+1)]) 
-
-p1 <- tbl.coef.rgarrote.cp %>%
-  arrange(D) %>%
-  mutate(coefid = 1:p) %>%
-  pivot_longer(cols = c(U, D), names_to = "component", values_to = "coef") %>%
-  ggplot(aes(x = coef, y = coefid, group = component, col = component)) +
-  geom_point(shape = 1) +
-  scale_x_continuous("Coefficient") +
-  scale_y_continuous("Variable index") +
-  geom_line(orientation = "y") +
-  geom_vline(xintercept = 0, linetype = 2) +
-  scale_color_manual("Component", values = c("grey20", "red3")) +
-  ggtitle("Ordered by D") +
-  theme_bw() +
-  theme(plot.title = element_text(hjust = 0.5))
-p2 <- tbl.coef.rgarrote.cp %>%
-  arrange(U) %>%
-  mutate(coefid = 1:p) %>%
-  pivot_longer(cols = c(U, D), names_to = "component", values_to = "coef") %>%
-  ggplot(aes(x = coef, y = coefid, group = component, col = component)) +
-  geom_point(shape = 1) +
-  scale_x_continuous("Coefficient") +
-  scale_y_continuous("Variable index") +
-  geom_line(orientation = "y") +
-  geom_vline(xintercept = 0, linetype = 2) +
-  scale_color_manual("Component", values = c("grey20", "red3")) +
-  ggtitle("Ordered by U") +
-  theme_bw() +
-  theme(plot.title = element_text(hjust = 0.5))
-p3 <- tbl.coef.rgarrote.cp %>%
-  arrange(peptide) %>%
-  mutate(coefid = 1:p) %>%
-  pivot_longer(cols = c(U, D), names_to = "component", values_to = "coef") %>%
-  ggplot(aes(x = coef, y = coefid, group = component, col = component)) +
-  geom_point(shape = 1) +
-  scale_x_continuous("Coefficient") +
-  scale_y_continuous("Variable index") +
-  geom_line(orientation = "y") +
-  geom_vline(xintercept = 0, linetype = 2) +
-  scale_color_manual("Component", values = c("grey20", "red3")) +
-  ggtitle("Unordered") +
-  theme_bw() +
-  theme(plot.title = element_text(hjust = 0.5))
 (p1 + p2 + p3) +
   plot_layout(guides = "collect") & theme(legend.position = 'bottom')
 ```
 
 # Results
+
+## Compare zero-inflation and effect of D component
+
+```{r}
+data_zi <- data_mos %>% 
+  dplyr::select(-c(idAuswertung, Age, Sex, eGFR)) %>% 
+  summarise_all(~sum(.x == 0) / n()) %>% 
+  reshape2::melt() %>%
+  arrange(variable)
+data_zi <- data_zi[-c(1:2, 800),]
+
+tbl_zi_coef_D <- cbind(data_zi, tbl.coef.ridge.cb$D,
+                     tbl.coef.lridge.cb$D, tbl.coef.rlasso.cb$D,
+                     tbl.coef.rgarrote.cb$D) %>%
+  data.frame() %>%
+  `colnames<-`(c("variable", "zi", "ridge", "lridge",
+                 "rlasso", "rgarrote")) %>%
+  mutate(component = "D")%>%
+  arrange(zi) %>%
+  mutate(variable =1:nrow(.))
+
+
+tbl_zi_coef_X <- cbind(data_zi, tbl.coef.ridge.cb$U,
+                     tbl.coef.lridge.cb$U, tbl.coef.rlasso.cb$U,
+                     tbl.coef.rgarrote.cb$U) %>%
+  data.frame() %>%
+  `colnames<-`(c("variable", "zi", "ridge", "lridge",
+                 "rlasso", "rgarrote")) %>%
+  mutate(component="U")%>%
+  arrange(zi) %>%
+  mutate(variable =1:nrow(.))
+
+tbl_zi_coef <- rbind(tbl_zi_coef_X, tbl_zi_coef_D)
+
+tbl_zi_coef  %>%
+  pivot_longer(cols = c(zi, ridge, lridge, rlasso, rgarrote), names_to = "effect", values_to = "value") %>%
+  ggplot(aes(x=value, y=variable, group=effect, col=effect)) +
+  #geom_line(orientation = "y") +
+  geom_point(size=1) +
+  facet_grid(~component) +
+  theme_bw()
+```
 
 ## Performance measures
 

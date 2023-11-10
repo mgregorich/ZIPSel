@@ -37,21 +37,25 @@ source(here::here("src","functions_sim.R"))
 
 # Parameter
 ngroups = 4
+nlams = 10
+nR=1
+ncv=10
 
 # Load & save setup
 setup <- readRDS(here::here("src", "scenario_setup.rds"))
 scenarios <- setup[[1]]
 sim_design <- setup[[2]]
 
-scn_nr = 611
+scn_nr = 449
 scn <- scenarios[scn_nr,]
 dsgn <- sim_design[[scenarios[scn_nr,]$dsgn]]
+scn$n <- 2000
 ```
 
 An explanation of the parameters in the scenario configuration is given below.
 
 | Variable                                                    | Abbreviation      | Description                                                                                                                                                                                       |
-|----------------|----------------|-----------------------------------------|
+|------------------|------------------|-------------------------------------|
 | Sample size                                                 | n                 | Number of samples within each dataset                                                                                                                                                             |
 | Number of candidate predictors                              | p                 | Number of predictors available to the data analyst                                                                                                                                                |
 | Scenario                                                    | \-                | Either A (all variables of group 1 are predictors) or B (5 predictors of each group are the true predictors)                                                                                      |
@@ -66,7 +70,9 @@ Since only one scenario of the 432 defined scenarios can be shown here, the para
 
 ```{r}
 #| tbl-cap: "Parameter specifications for the selected scenario"
-data.frame("Parameter"=rownames(t(scn[,1:13])), "Value"=t(scn[,1:13])) %>% rename("Value"=paste0("X", scn_nr)) %>% gt()
+data.frame("Parameter"=rownames(t(scn[,1:13])), "Value"=t(scn[,1:13])) %>%
+  rename("Value"=paste0("X", scn_nr)) %>% 
+  gt()
 ```
 
 # Data generation
@@ -77,7 +83,7 @@ In this section, we will elaborate on the data simulation in order to generate t
 
 ```{r}
 # Data generation
-data_sim <- data_generation(dsgn = dsgn, scenario = scn$scenario, n = scn$n,
+data_sim <- data_generation(dsgn = dsgn, population = scn$population, n = scn$n,
                             p=scn$p, beta_max = scn$beta_max,
                             a = scn$a, epsstd = scn$epsstd, xmean= scn$xmean, xstd = scn$xstd,
                             propzi = scn$propzi, revzi = scn$revzi, 
@@ -128,8 +134,8 @@ p_all
 
 The regression coefficients are according to the selected Scenario:
 
--   **Scenario A**: Only peptides in group 1 have an effect on the outcome variable $y$. The effect is linearly decreasing for the true predictors in the continuous component $X_{struc}$, while it is permuted for the true predictors in the binary component $D_{struc}$, otherwise it is 0.
--   **Scenario B**: In each group, 5 peptides which are spaced equally with regard to the index are true predictors. The effect again linearly decreases for the true predictors in the continuous component $X_{struc}$ and is randomly permuted for the true predictors in the binary component $D_{struc}$, otherwise 0.
+-   **population A**: Only peptides in group 1 have an effect on the outcome variable $y$. The effect is linearly decreasing for the true predictors in the continuous component $X_{struc}$, while it is permuted for the true predictors in the binary component $D_{struc}$, otherwise it is 0.
+-   **population B**: In each group, 5 peptides which are spaced equally with regard to the index are true predictors. The effect again linearly decreases for the true predictors in the continuous component $X_{struc}$ and is randomly permuted for the true predictors in the binary component $D_{struc}$, otherwise 0.
 
 ```{r}
 #| fig-cap: "Magnitude of true regression coefficients grouped by continuous component U and binary component D"
@@ -139,7 +145,7 @@ true_beta %>%
          group = rep(c("G1", "G2", "G3", "G4"), each=scn$p/ngroups)) %>%
   pivot_longer(cols=c(beta_X, beta_D), names_to = "Effect", values_to = "coef") %>%
   ggplot(aes(x=ind, y=coef, group=Effect, linetype=Effect, shape=Effect)) +
-  {if(scn$scenario=="B")geom_point()} +
+  {if(scn$population=="B")geom_point()} +
   geom_line() +
   facet_grid(~group, scales = "free_x") +
   scale_x_continuous("Variable index") +
@@ -238,7 +244,7 @@ p_Xsam <- ggplot(data = melt_Xsam, aes(x=Var2, y=Var1, fill=value)) +
  theme(axis.text = element_blank(), axis.title = element_blank(), axis.ticks = element_blank(),
        legend.position = "top", plot.title = element_text(hjust = 0.5, size=10))
 
-p_Dstrc <- ggplot(data = melt_Dstr, aes(x=Var2, y=Var1, fill=value_rev)) +
+p_Dstrc <- ggplot(data = melt_Dstr, aes(x=Var2, y=Var1, fill=value)) +
  geom_tile()+
  scale_fill_gradient2(low = "white", high = "red",
    limit = c(0,1), name="") +
@@ -247,7 +253,7 @@ p_Dstrc <- ggplot(data = melt_Dstr, aes(x=Var2, y=Var1, fill=value_rev)) +
  theme(axis.text = element_blank(), axis.title = element_blank(), axis.ticks = element_blank(),
        legend.position = "top", plot.title = element_text(hjust = 0.5, size=10))
 
-p_Dsamp <- ggplot(data = melt_Dsamp, aes(x=Var2, y=Var1, fill=value_rev)) +
+p_Dsamp <- ggplot(data = melt_Dsamp, aes(x=Var2, y=Var1, fill=value)) +
  geom_tile()+
  scale_fill_gradient2(low = "white", high = "red",
    limit = c(0,1), name="") +
@@ -288,7 +294,7 @@ data.obj <- generate_dataobj(y = data_sim$data_ana$y,
                              clinical = NULL, logtransform = FALSE)
 ```
 
-Another binary matrix, $D_{sam}$, determines which values are subject to sampling zeros. Values below specific quantiles of the log-normal distributed peptide intensities are set to zero based on proportions of sampling zero-inflation specified for each peptide individually, as depicted in the Figure above. The data analyst's final data set is obtained by element-wise multiplication of $D_struc$ and $D_sam$ with $X_{struc}$, which is shown in Panel (B1) in the previous section. Multiplication by $D_{struc}$ is necessary since zeros values were transformed to the mean in $X_{struc}$. The multiplication with $D_{sam}$ incorporates the sampling zeros. Thus, the final data set the data analyst receives has the following distribution:
+Another binary matrix, $D_{sam}$, determines which values are subject to sampling zeros. Values below specific quantiles of the log-normal distributed peptide intensities are set to zero based on proportions of sampling zero-inflation specified for each peptide individually, as depicted in the Figure above. The data analyst's final data set is obtained by element-wise multiplication of $D_{struc}$ and $D_{sam}$ with $X_{struc}$, which is shown in Panel (B1) in the previous section. Multiplication by $D_{struc}$ is necessary since zeros values were transformed to the mean in $X_{struc}$. The multiplication with $D_{sam}$ incorporates the sampling zeros. Thus, the final data set the data analyst receives has the following distribution:
 
 ```{r}
 #| fig-cap: "Distribution of simulated peptide intensities that the data analyst receives."
@@ -344,7 +350,7 @@ p_all
 
 ```{r}
 # Generate large validation dataset
-data.val <- data_generation(dsgn = dsgn, scenario = scn$scenario, n = 100000,
+data.val <- data_generation(dsgn = dsgn, population = scn$population, n = 100000,
                             p=scn$p, beta_max = scn$beta_max, 
                             a = scn$a, epsstd = scn$epsstd, xmean = scn$xmean, xstd = scn$xstd,
                             propzi = scn$propzi, revzi = scn$revzi, 
@@ -355,10 +361,22 @@ data.obj.val <- generate_dataobj(y = data.val$data_ana$y,
 ```
 
 ```{r}
-par(mfrow=c(1,2))
-hist((data.obj.val$u))
-hist(data.obj$u)
-par(mfrow=c(1,1))
+#| fig-cap: "Magnitude of true regression coefficients in validation data grouped by continuous component U and binary component D"
+data.val$data_coef %>%
+  dplyr::select(var, beta_X, beta_D) %>%
+  mutate(ind = as.numeric(str_remove_all(var, "V")),
+         group = rep(c("G1", "G2", "G3", "G4"), each=scn$p/ngroups)) %>%
+  pivot_longer(cols=c(beta_X, beta_D), names_to = "Effect", values_to = "coef") %>%
+  ggplot(aes(x=ind, y=coef, group=Effect, linetype=Effect, shape=Effect)) +
+  {if(scn$population=="B")geom_point()} +
+  geom_line() +
+  facet_grid(~group, scales = "free_x") +
+  scale_x_continuous("Variable index") +
+  scale_y_continuous("Coefficient") +
+  scale_linetype_manual(values = c(2,1)) +
+  theme_bw() +
+  theme(legend.position = "top")
+
 ```
 
 # Data analysis
@@ -376,9 +394,7 @@ tbl_pred <- data.frame("y" = data.obj.val$y)
 
 # Parameter
 p <- scn$p
-nlams = 10
-nR=1
-ncv=10
+
 ```
 
 ## Regression coefficients
@@ -498,6 +514,10 @@ tbl_coef %>%
 
 ```{r}
 # --- Lasso-ridge 
+data.obj3 <- generate_dataobj_reduced(y = data_sim$data_ana$y, 
+                                 x = data_sim$data_ana$X,
+                             clinical = NULL, logtransform = FALSE, n=200)
+
 fit.lridge <- perform_lridge(data.obj, family = "gaussian", cv = ncv, R = nR, nlambda = rep(nlams, 2), 
                                 penalty = "combined", split_vars = TRUE)
 tbl_pred$pred.lridge <- predict_lridge(obj = fit.lridge, newdata = data.obj.val)
@@ -506,6 +526,7 @@ tbl_perf[4, "df"] <- fit.lridge$dfvars
 tbl_perf[4, "extime"] <- fit.lridge$extime
 tbl_coef$beta_lridge_u <- fit.lridge$coefficients[2:(p+1)]
 tbl_coef$beta_lridge_d <- fit.lridge$coefficients[(p+2):(2*p+1)]
+tbl_perf
 ```
 
 ```{r}
@@ -547,7 +568,7 @@ tbl_coef$beta_rlasso_d <- fit.rlasso$coefficients[(p+2):(2*p+1)]
 
 ```{r}
 #| label: fig-rlassocoefcb 
-#| fig-cap: "Component-specific coefficients of the ridge-lassi regression model by D and U, respectively." 
+#| fig-cap: "Component-specific coefficients of the ridge-lasso regression model by D and U, respectively." 
  
 tbl_coef %>%
   mutate(coefid = 1:nrow(.)) %>%
@@ -628,6 +649,19 @@ tbl_allsel <- do.call(rbind, lapply(list_sel, function(x) x[[3]]))
 
 ```{r}
 tbl_allsel %>% mutate_at(3:6, round, 2) %>% gt()
+```
+
+## Calibration
+
+```{r}
+pcal_oracle <- plot_calibration(pred = tbl_pred$pred.oracle, obs = tbl_pred$y, fig.title = "oracle")
+pcal_lasso <- plot_calibration(pred = tbl_pred$pred.lasso, obs = tbl_pred$y, fig.title = "lasso")
+pcal_ridge <- plot_calibration(pred = tbl_pred$pred.ridge, obs = tbl_pred$y, fig.title = "ridge")
+pcal_lridge <- plot_calibration(pred = tbl_pred$pred.lridge, obs = tbl_pred$y, fig.title = "lasso-ridge")
+pcal_rlasso <- plot_calibration(pred = tbl_pred$pred.rlasso, obs = tbl_pred$y, fig.title = "ridge-lasso")
+pcal_rgarrote <- plot_calibration(pred = tbl_pred$pred.rgarrote, obs = tbl_pred$y, fig.title = "ridge-garrote")
+
+(pcal_oracle + pcal_lasso + pcal_ridge) / (pcal_lridge + pcal_rlasso + pcal_rgarrote)
 ```
 
 ## Performance measures

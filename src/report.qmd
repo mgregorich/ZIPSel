@@ -34,12 +34,12 @@ pacman::p_load(ggplot2, parallel, future.apply, stringr, kableExtra,
 
 # Paths
 out.path <- "output"
-sim.date <- "2023-10-23"
+sim.date <- "2023-11-08"
 sim.file <- paste0("sim_", sim.date,"/")
 sim.path <- here::here(out.path, sim.file)
-ggcols <- c("black", "grey45","goldenrod3", "deepskyblue3",
+ggcols <- c("black", "grey20","grey45","goldenrod3", "deepskyblue3",
             "royalblue3", "darkred")
-methnames <- c("oracle", "lasso", "ridge", "ridge-lasso",
+methnames <- c("oracle", "ridge-oracle","lasso", "ridge", "ridge-lasso",
                "lasso-ridge", "ridge-garrote")
 # Read in results
 tbl_res <- readRDS(here::here(sim.path, "tbl_results_perf.rds"))
@@ -60,9 +60,9 @@ tbl_groupsel <- tbl_res$tbl_groupsel%>%
 
 ```{r}
 tbl_perf %>%
-  dplyr::select(scenario, UDdepen, n, epslvl, propzi, struczero, 
+  dplyr::select(population, UDdepen, n, epslvl, propzi, struczero, 
                 revzi, model, penalty, RMSPE.est, RMSPE.lo, RMSPE.up) %>%
-  filter(scenario %in% "A" & epslvl == "none" & revzi == TRUE & struczero == 0.33 & UDdepen == "U" &
+  filter(population %in% "A" & epslvl == "none" & revzi == TRUE & struczero == 0.33 & UDdepen == "U" &
            model != "oracle") %>%
   mutate(n = to_factor(n)) %>%
   arrange(model, penalty) %>%
@@ -78,11 +78,11 @@ tbl_perf %>%
 ```
 
 ```{r}
-#| fig-cap: "Scenario A with a linearly increasing proportion of zero-inflation of up to 75%"
+#| fig-cap: "population A with a linearly increasing proportion of zero-inflation of up to 75%"
 tbl_perf %>%
-  dplyr::select(scenario, UDdepen, n, epslvl, propzi, struczero, 
+  dplyr::select(population, UDdepen, n, epslvl, propzi, struczero, 
                 revzi, model, penalty, RMSPE.est) %>%
-  filter(scenario %in% "A" & propzi == 0.75 & revzi == TRUE & 
+  filter(population %in% "A" & propzi == 0.75 & revzi == TRUE & 
            model != "oracle") %>%
   mutate(n = to_factor(n)) %>%
   mutate(RMSPE.est = ifelse(UDdepen == "U", RMSPE.est/10, RMSPE.est)) %>%
@@ -112,11 +112,11 @@ tbl_perf %>%
 ```
 
 ```{r}
-#| fig-cap: "Scenario A with a linearly increasing proportion of zero-inflation of up to 25%"
+#| fig-cap: "population A with a linearly increasing proportion of zero-inflation of up to 25%"
 tbl_perf %>%
-  dplyr::select(scenario, UDdepen, n, epslvl, propzi, struczero, revzi,
+  dplyr::select(population, UDdepen, n, epslvl, propzi, struczero, revzi,
                 model, penalty, RMSPE.est) %>%
-  filter(scenario %in% "A" & propzi == 0.25 & revzi == TRUE & 
+  filter(population %in% "A" & propzi == 0.25 & revzi == TRUE & 
            model != "oracle" ) %>%
   mutate(n = to_factor(n),
          RMSPE.est = ifelse(UDdepen == "U", RMSPE.est/10, RMSPE.est)) %>%
@@ -145,11 +145,11 @@ tbl_perf %>%
 ```
 
 ```{r}
-#| fig-cap: "Scenario A with a linearly decreasing proportion of zero-inflation of starting from 75%"
+#| fig-cap: "population A with a linearly decreasing proportion of zero-inflation of starting from 75%"
 tbl_perf %>%
-  dplyr::select(scenario, UDdepen, n, epslvl, propzi, struczero, 
+  dplyr::select(population, UDdepen, n, epslvl, propzi, struczero, 
                 revzi, model, penalty, RMSPE.est) %>%
-  filter(scenario %in% "A" & propzi == 0.75 & revzi == FALSE & 
+  filter(population %in% "A" & propzi == 0.75 & revzi == FALSE & 
            model != "oracle") %>%
   mutate(n = to_factor(n)) %>%
   mutate(RMSPE.est = ifelse(UDdepen == "U", RMSPE.est/10, RMSPE.est)) %>%
@@ -179,11 +179,11 @@ tbl_perf %>%
 ```
 
 ```{r}
-#| fig-cap: "Scenario A with a linearly decreasing proportion of zero-inflation of starting from 25%"
+#| fig-cap: "population A with a linearly decreasing proportion of zero-inflation of starting from 25%"
 tbl_perf %>%
-  dplyr::select(scenario, UDdepen, n, epslvl, propzi, struczero, revzi,
+  dplyr::select(population, UDdepen, n, epslvl, propzi, struczero, revzi,
                 model, penalty, RMSPE.est) %>%
-  filter(scenario %in% "A" & propzi == 0.25 & revzi == FALSE & 
+  filter(population %in% "A" & propzi == 0.25 & revzi == FALSE & 
            model != "oracle" ) %>%
   mutate(n = to_factor(n),
          RMSPE.est = ifelse(UDdepen == "U", RMSPE.est/10, RMSPE.est)) %>%
@@ -214,10 +214,10 @@ tbl_perf %>%
 ## Relative RMSPE
 
 ```{r}
-#| fig-cap: "Scenario A with a linearly increasing proportion of zero-inflation of up to 75%"
+#| fig-cap: "population A with a linearly increasing proportion of zero-inflation of up to 75%"
 tbl_perf %>%
-  dplyr::select(scenario, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, relRMSPE.est) %>%
-  filter(scenario %in% "A"  & propzi == 0.75 & revzi == TRUE & model != "oracle") %>%
+  dplyr::select(population, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, relRMSPE.est) %>%
+  filter(population %in% "A"  & propzi == 0.75 & revzi == TRUE & model != "oracle") %>%
   mutate(n = to_factor(n)) %>%
   arrange(model, penalty) %>%
   pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = relRMSPE.est, names_from = model) %>%
@@ -242,11 +242,11 @@ tbl_perf %>%
 ```
 
 ```{r}
-#| fig-cap: "Scenario A with a linearly increasing proportion of zero-inflation of up tp 25%"
+#| fig-cap: "population A with a linearly increasing proportion of zero-inflation of up tp 25%"
 tbl_perf %>%
-  dplyr::select(scenario, UDdepen, n, epslvl, propzi, struczero, revzi, model,
+  dplyr::select(population, UDdepen, n, epslvl, propzi, struczero, revzi, model,
                 penalty, relRMSPE.est) %>%
-  filter(scenario %in% "A" & propzi == 0.25 & revzi == TRUE & model != "oracle") %>%
+  filter(population %in% "A" & propzi == 0.25 & revzi == TRUE & model != "oracle") %>%
   mutate(n = to_factor(n)) %>%
   arrange(model, penalty) %>%
   pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = relRMSPE.est, names_from = model) %>%
@@ -271,10 +271,10 @@ tbl_perf %>%
 ```
 
 ```{r}
-#| fig-cap: "Scenario A with a linearly decreasing proportion of zero-inflation of starting from 75%"
+#| fig-cap: "population A with a linearly decreasing proportion of zero-inflation of starting from 75%"
 tbl_perf %>%
-  dplyr::select(scenario, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, relRMSPE.est) %>%
-  filter(scenario %in% "A" & propzi == 0.75 & revzi == FALSE & model != "oracle") %>%
+  dplyr::select(population, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, relRMSPE.est) %>%
+  filter(population %in% "A" & propzi == 0.75 & revzi == FALSE & model != "oracle") %>%
   mutate(n = to_factor(n)) %>%
   arrange(model, penalty) %>%
   pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = relRMSPE.est, names_from = model) %>%
@@ -298,11 +298,11 @@ tbl_perf %>%
 ```
 
 ```{r}
-#| fig-cap: "Scenario A with a linearly decreasing proportion of zero-inflation of starting from 25%"
+#| fig-cap: "population A with a linearly decreasing proportion of zero-inflation of starting from 25%"
 tbl_perf %>%
-  dplyr::select(scenario, UDdepen, n, epslvl, propzi, struczero, revzi, model,
+  dplyr::select(population, UDdepen, n, epslvl, propzi, struczero, revzi, model,
                 penalty, relRMSPE.est) %>%
-  filter(scenario %in% "A" & propzi == 0.25 & revzi == FALSE & model != "oracle") %>%
+  filter(population %in% "A" & propzi == 0.25 & revzi == FALSE & model != "oracle") %>%
   mutate(n = to_factor(n)) %>%
   arrange(model, penalty) %>%
   pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = relRMSPE.est, names_from = model) %>%
@@ -328,10 +328,10 @@ tbl_perf %>%
 ## Calibration
 
 ```{r}
-#| fig-cap: "Scenario A with a linearly increasing proportion of zero-inflation of up to 75%"
+#| fig-cap: "population A with a linearly increasing proportion of zero-inflation of up to 75%"
 tbl_perf %>%
-  dplyr::select(scenario, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, CS.est) %>%
-  filter(scenario %in% "A" & propzi == 0.75 & revzi == TRUE) %>%
+  dplyr::select(population, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, CS.est) %>%
+  filter(population %in% "A" & propzi == 0.75 & revzi == TRUE) %>%
   mutate(n = to_factor(n)) %>%
   arrange(model, penalty) %>%
   pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = CS.est, names_from = model) %>%
@@ -355,10 +355,10 @@ tbl_perf %>%
 ```
 
 ```{r}
-#| fig-cap: "Scenario A with a linearly increasing proportion of zero-inflation of up to 25%"
+#| fig-cap: "population A with a linearly increasing proportion of zero-inflation of up to 25%"
 tbl_perf %>%
-  dplyr::select(scenario,  UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, CS.est) %>%
-  filter(scenario %in% "A" & propzi == 0.25 & revzi == TRUE) %>%
+  dplyr::select(population,  UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, CS.est) %>%
+  filter(population %in% "A" & propzi == 0.25 & revzi == TRUE) %>%
   mutate(n = to_factor(n)) %>%
   arrange(model, penalty) %>%
   pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = CS.est, names_from = model) %>%
@@ -382,10 +382,10 @@ tbl_perf %>%
 ```
 
 ```{r}
-#| fig-cap: "Scenario A with a linearly decreasing proportion of zero-inflation of starting from 75%"
+#| fig-cap: "population A with a linearly decreasing proportion of zero-inflation of starting from 75%"
 tbl_perf %>%
-  dplyr::select(scenario,  UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, CS.est) %>%
-  filter(scenario %in% "A"  & propzi == 0.75 & revzi == FALSE) %>%
+  dplyr::select(population,  UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, CS.est) %>%
+  filter(population %in% "A"  & propzi == 0.75 & revzi == FALSE) %>%
   mutate(n = to_factor(n)) %>%
   arrange(model, penalty) %>%
   pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = CS.est, names_from = model) %>%
@@ -409,10 +409,10 @@ tbl_perf %>%
 ```
 
 ```{r}
-#| fig-cap: "Scenario A with a linearly decreasing proportion of zero-inflation of starting from 25%"
+#| fig-cap: "population A with a linearly decreasing proportion of zero-inflation of starting from 25%"
 tbl_perf %>%
-  dplyr::select(scenario, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, CS.est) %>%
-  filter(scenario %in% "A" & propzi == 0.25 & revzi == FALSE) %>%
+  dplyr::select(population, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, CS.est) %>%
+  filter(population %in% "A" & propzi == 0.25 & revzi == FALSE) %>%
   mutate(n = to_factor(n)) %>%
   arrange(model, penalty) %>%
   pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = CS.est, names_from = model) %>%
@@ -438,10 +438,10 @@ tbl_perf %>%
 ## R2
 
 ```{r}
-#| fig-cap: "Scenario A with a linearly increasing proportion of zero-inflation of up to 75%"
+#| fig-cap: "population A with a linearly increasing proportion of zero-inflation of up to 75%"
 tbl_perf %>%
-  dplyr::select(scenario, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, R2.est) %>%
-  filter(scenario %in% "A" & propzi == 0.75 & revzi == TRUE ) %>%
+  dplyr::select(population, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, R2.est) %>%
+  filter(population %in% "A" & propzi == 0.75 & revzi == TRUE ) %>%
   mutate(n = to_factor(n)) %>%
   arrange(model, penalty) %>%
   pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = R2.est, names_from = model) %>%
@@ -465,10 +465,10 @@ tbl_perf %>%
 ```
 
 ```{r}
-#| fig-cap: "Scenario A with a linearly increasing proportion of zero-inflation of up to 25%"
+#| fig-cap: "population A with a linearly increasing proportion of zero-inflation of up to 25%"
 tbl_perf %>%
-  dplyr::select(scenario, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, R2.est) %>%
-  filter(scenario %in% "A" & propzi == 0.25 & revzi == TRUE) %>%
+  dplyr::select(population, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, R2.est) %>%
+  filter(population %in% "A" & propzi == 0.25 & revzi == TRUE) %>%
   mutate(n = to_factor(n)) %>%
   arrange(model, penalty) %>%
   pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = R2.est, names_from = model) %>%
@@ -492,10 +492,10 @@ tbl_perf %>%
 ```
 
 ```{r}
-#| fig-cap: "Scenario A with a linearly decreasing proportion of zero-inflation of starting from 75%"
+#| fig-cap: "population A with a linearly decreasing proportion of zero-inflation of starting from 75%"
 tbl_perf %>%
-  dplyr::select(scenario, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, R2.est) %>%
-  filter(scenario %in% "A" & propzi == 0.75 & revzi == FALSE) %>%
+  dplyr::select(population, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, R2.est) %>%
+  filter(population %in% "A" & propzi == 0.75 & revzi == FALSE) %>%
   mutate(n = to_factor(n)) %>%
   arrange(model, penalty) %>%
   pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = R2.est, names_from = model) %>%
@@ -519,10 +519,10 @@ tbl_perf %>%
 ```
 
 ```{r}
-#| fig-cap: "Scenario A with a linearly decreasing proportion of zero-inflation of starting from 25%"
+#| fig-cap: "population A with a linearly decreasing proportion of zero-inflation of starting from 25%"
 tbl_perf %>%
-  dplyr::select(scenario, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, R2.est) %>%
-  filter(scenario %in% "A" & propzi == 0.25 & revzi == FALSE) %>%
+  dplyr::select(population, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, R2.est) %>%
+  filter(population %in% "A" & propzi == 0.25 & revzi == FALSE) %>%
   mutate(n = to_factor(n)) %>%
   arrange(model, penalty) %>%
   pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = R2.est, names_from = model) %>%
@@ -550,13 +550,13 @@ tbl_perf %>%
 ### Variable inclusion
 
 ```{r}
-#| fig-cap: "Scenario A with a linearly increasing proportion of zero-inflation of up to 75%"
+#| fig-cap: "population A with a linearly increasing proportion of zero-inflation of up to 75%"
 tbl_perf %>%
-  dplyr::select(scenario, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, df.est) %>%
-  filter(scenario %in% "A" & propzi == 0.75 & revzi == TRUE ) %>%
+  dplyr::select(population, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, npeps.est) %>%
+  filter(population %in% "A" & propzi == 0.75 & revzi == TRUE ) %>%
   mutate(n = to_factor(n)) %>%
   arrange(model, penalty) %>%
-  pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = df.est, names_from = model) %>%
+  pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = npeps.est, names_from = model) %>%
   nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "struczero",
                    steps_y_base = -25, steps_y_height = 5, 
                    steps_names = "Residual variance",
@@ -577,13 +577,13 @@ tbl_perf %>%
 ```
 
 ```{r}
-#| fig-cap: "Scenario A with a linearly increasing proportion of zero-inflation of up to 25%"
+#| fig-cap: "population A with a linearly increasing proportion of zero-inflation of up to 25%"
 tbl_perf %>%
-  dplyr::select(scenario, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, df.est) %>%
-  filter(scenario %in% "A"  & propzi == 0.25 & revzi == TRUE ) %>%
+  dplyr::select(population, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, npeps.est) %>%
+  filter(population %in% "A"  & propzi == 0.25 & revzi == TRUE ) %>%
   mutate(n = to_factor(n)) %>%
   arrange(model, penalty) %>%
-  pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = df.est, names_from = model) %>%
+  pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = npeps.est, names_from = model) %>%
   nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "struczero",
                    steps_y_base = -25, steps_y_height = 5, 
                    steps_names = "Residual variance",
@@ -604,13 +604,13 @@ tbl_perf %>%
 ```
 
 ```{r}
-#| fig-cap: "Scenario A with a denearly increasing proportion of zero-inflation starting with 75%"
+#| fig-cap: "population A with a denearly increasing proportion of zero-inflation starting with 75%"
 tbl_perf %>%
-  dplyr::select(scenario, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, df.est) %>%
-  filter(scenario %in% "A" & propzi == 0.75 & revzi == FALSE) %>%
+  dplyr::select(population, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, npeps.est) %>%
+  filter(population %in% "A" & propzi == 0.75 & revzi == FALSE) %>%
   mutate(n = to_factor(n)) %>%
   arrange(model, penalty) %>%
-  pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = df.est, names_from = model) %>%
+  pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = npeps.est, names_from = model) %>%
   nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "struczero",
                    steps_y_base = -25, steps_y_height = 5, 
                    steps_names = "Residual variance",
@@ -631,13 +631,13 @@ tbl_perf %>%
 ```
 
 ```{r}
-#| fig-cap: "Scenario A with a denearly increasing proportion of zero-inflation starting with 25%"
+#| fig-cap: "population A with a denearly increasing proportion of zero-inflation starting with 25%"
 tbl_perf %>%
-  dplyr::select(scenario, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, df.est) %>%
-  filter(scenario %in% "A" & propzi == 0.25 & revzi == FALSE ) %>%
+  dplyr::select(population, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, npeps.est) %>%
+  filter(population %in% "A" & propzi == 0.25 & revzi == FALSE ) %>%
   mutate(n = to_factor(n)) %>%
   arrange(model, penalty) %>%
-  pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = df.est, names_from = model) %>%
+  pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = npeps.est, names_from = model) %>%
   nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "struczero",
                    steps_y_base = -25, steps_y_height = 5, 
                    steps_names = "Residual variance",
@@ -663,10 +663,10 @@ tbl_perf %>%
 #### TPDR
 
 ```{r}
-#| fig-cap: "Scenario A with a denearly increasing proportion of zero-inflation starting with 75%"
+#| fig-cap: "population A with a denearly increasing proportion of zero-inflation starting with 75%"
 tbl_allsel %>%
-  dplyr::select(scenario, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, TPDR) %>%
-  filter(scenario %in% "A" & propzi == 0.75 & revzi == TRUE) %>%
+  dplyr::select(population, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, TPDR) %>%
+  filter(population %in% "A" & propzi == 0.75 & revzi == TRUE) %>%
   mutate(n = to_factor(n)) %>%
   arrange(model, penalty) %>%
   pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = TPDR, names_from = model) %>%
@@ -692,10 +692,10 @@ tbl_allsel %>%
 #### TNDR
 
 ```{r}
-#| fig-cap: "Scenario A with a denearly increasing proportion of zero-inflation starting with 75%"
+#| fig-cap: "population A with a denearly increasing proportion of zero-inflation starting with 75%"
 tbl_allsel %>%
-  dplyr::select(scenario, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, TNDR) %>%
-  filter(scenario %in% "A" & propzi == 0.75 & revzi == TRUE ) %>%
+  dplyr::select(population, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, TNDR) %>%
+  filter(population %in% "A" & propzi == 0.75 & revzi == TRUE ) %>%
   mutate(n = to_factor(n)) %>%
   arrange(model, penalty) %>%
   pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = TNDR, names_from = model) %>%
@@ -721,10 +721,10 @@ tbl_allsel %>%
 #### FPDR
 
 ```{r}
-#| fig-cap: "Scenario A with a denearly increasing proportion of zero-inflation starting with 75%"
+#| fig-cap: "population A with a denearly increasing proportion of zero-inflation starting with 75%"
 tbl_allsel %>%
-  dplyr::select(scenario, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, FPDR) %>%
-  filter(scenario %in% "A" & propzi == 0.75 & revzi == TRUE ) %>%
+  dplyr::select(population, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, FPDR) %>%
+  filter(population %in% "A" & propzi == 0.75 & revzi == TRUE ) %>%
   mutate(n = to_factor(n)) %>%
   arrange(model, penalty) %>%
   pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = FPDR, names_from = model) %>%
@@ -750,10 +750,10 @@ tbl_allsel %>%
 #### FNDR
 
 ```{r}
-#| fig-cap: "Scenario A with a denearly increasing proportion of zero-inflation starting with 75%"
+#| fig-cap: "population A with a denearly increasing proportion of zero-inflation starting with 75%"
 tbl_allsel %>%
-  dplyr::select(scenario, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, FNDR) %>%
-  filter(scenario %in% "A" & propzi == 0.75 & revzi == TRUE) %>%
+  dplyr::select(population, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, FNDR) %>%
+  filter(population %in% "A" & propzi == 0.75 & revzi == TRUE) %>%
   mutate(n = to_factor(n)) %>%
   arrange(model, penalty) %>%
   pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = FNDR, names_from = model) %>%
@@ -782,12 +782,10 @@ tbl_allsel %>%
 ## RMSPE
 
 ```{r}
-#| fig-cap: "Scenario B with a linearly increasing proportion of zero-inflation of up to 75%"
+#| fig-cap: "population B with a linearly increasing proportion of zero-inflation of up to 75%"
 tbl_perf %>%
-  dplyr::select(scenario, UDdepen, n, epslvl, propzi, struczero, 
-                revzi, model, penalty, RMSPE.est) %>%
-  filter(scenario %in% "B" & propzi == 0.75 & revzi == TRUE & 
-           model != "oracle") %>%
+  dplyr::select(population, UDdepen, n, epslvl, propzi, struczero, model, penalty, RMSPE.est) %>%
+  filter(population %in% "B" & propzi == 0.75 & model != "oracle") %>%
   mutate(n = to_factor(n)) %>%
   mutate(RMSPE.est = ifelse(UDdepen == "U", RMSPE.est/10, RMSPE.est)) %>%
   arrange(model, penalty) %>%
@@ -816,12 +814,10 @@ tbl_perf %>%
 ```
 
 ```{r}
-#| fig-cap: "Scenario B with a linearly increasing proportion of zero-inflation of up to 25%"
+#| fig-cap: "population B with a linearly increasing proportion of zero-inflation of up to 25%"
 tbl_perf %>%
-  dplyr::select(scenario, UDdepen, n, epslvl, propzi, struczero, revzi,
-                model, penalty, RMSPE.est) %>%
-  filter(scenario %in% "B" & propzi == 0.25 & revzi == TRUE & 
-           model != "oracle" ) %>%
+  dplyr::select(population, UDdepen, n, epslvl, propzi, struczero, model, penalty, RMSPE.est) %>%
+  filter(population %in% "B" & propzi == 0.25 & model != "oracle" ) %>%
   mutate(n = to_factor(n),
          RMSPE.est = ifelse(UDdepen == "U", RMSPE.est/10, RMSPE.est)) %>%
   arrange(model, penalty) %>%
@@ -848,80 +844,15 @@ tbl_perf %>%
                    )) 
 ```
 
-```{r}
-#| fig-cap: "Scenario B with a linearly decreasing proportion of zero-inflation of starting from 75%"
-tbl_perf %>%
-  dplyr::select(scenario, UDdepen, n, epslvl, propzi, struczero, 
-                revzi, model, penalty, RMSPE.est) %>%
-  filter(scenario %in% "B" & propzi == 0.75 & revzi == FALSE & 
-           model != "oracle") %>%
-  mutate(n = to_factor(n)) %>%
-  mutate(RMSPE.est = ifelse(UDdepen == "U", RMSPE.est/10, RMSPE.est)) %>%
-  arrange(model, penalty) %>%
-  pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), 
-              values_from = RMSPE.est, names_from = model) %>%
-  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" ,
-                   grid_rows = "struczero",
-                   steps_y_base = -0.5, steps_y_height = 0.1, 
-                   steps_names = "Residual variance",
-                   x_name = "Sample size", y_name = "Averaged RMSPE",
-                   spu_x_shift = 1.5,
-                   grid_scales="free_y",
-                   colors = ggcols[-1],
-                   steps_values_annotate = TRUE, 
-                   steps_annotation_size = 2.5,
-                   hline_intercept = 0,
-                   y_expand_add = c(1, 0.5),
-                   post_processing = list(
-                       add_custom_theme = list(
-                         text=element_text(size = 14),
-                           axis.text.x = element_text(size = 14,
-                                                      angle = -90,
-                                                      vjust = 0.5),
-                         legend.position="top")
-                   )) 
-```
 
-```{r}
-#| fig-cap: "Scenario B with a linearly decreasing proportion of zero-inflation of starting from 25%"
-tbl_perf %>%
-  dplyr::select(scenario, UDdepen, n, epslvl, propzi, struczero, revzi,
-                model, penalty, RMSPE.est) %>%
-  filter(scenario %in% "B" & propzi == 0.25 & revzi == FALSE & 
-           model != "oracle" ) %>%
-  mutate(n = to_factor(n),
-         RMSPE.est = ifelse(UDdepen == "U", RMSPE.est/10, RMSPE.est)) %>%
-  arrange(model, penalty) %>%
-  pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), 
-              values_from = RMSPE.est, names_from = model) %>%
-  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , 
-                   grid_rows = "struczero",
-                   steps_y_base = -1, steps_y_height = 0.15, 
-                   steps_names = "Residual variance",
-                   x_name = "Sample size", y_name = "Averaged RMSPE",
-                   spu_x_shift = 1.5,
-                   grid_scales="free_y",
-                   colors = ggcols[-1],
-                   steps_values_annotate = TRUE, steps_annotation_size = 2.5,
-                   hline_intercept = 0,
-                   y_expand_add = c(1, 0.5),
-                   post_processing = list(
-                       add_custom_theme = list(
-                         text=element_text(size = 14),
-                           axis.text.x = element_text(size = 14,
-                                                      angle = -90,
-                                                      vjust = 0.5),
-                         legend.position="top")
-                   )) 
-```
 
 ## Relative RMSPE
 
 ```{r}
-#| fig-cap: "Scenario B with a linearly increasing proportion of zero-inflation of up to 75%"
+#| fig-cap: "population B with a linearly increasing proportion of zero-inflation of up to 75%"
 tbl_perf %>%
-  dplyr::select(scenario, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, relRMSPE.est) %>%
-  filter(scenario %in% "B"  & propzi == 0.75 & revzi == TRUE & model != "oracle") %>%
+  dplyr::select(population, UDdepen, n, epslvl, propzi, struczero, model, penalty, relRMSPE.est) %>%
+  filter(population %in% "B"  & propzi == 0.75 & model != "oracle") %>%
   mutate(n = to_factor(n)) %>%
   arrange(model, penalty) %>%
   pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = relRMSPE.est, names_from = model) %>%
@@ -946,11 +877,10 @@ tbl_perf %>%
 ```
 
 ```{r}
-#| fig-cap: "Scenario B with a linearly increasing proportion of zero-inflation of up tp 25%"
+#| fig-cap: "population B with a linearly increasing proportion of zero-inflation of up tp 25%"
 tbl_perf %>%
-  dplyr::select(scenario, UDdepen, n, epslvl, propzi, struczero, revzi, model,
-                penalty, relRMSPE.est) %>%
-  filter(scenario %in% "B" & propzi == 0.25 & revzi == TRUE & model != "oracle") %>%
+  dplyr::select(population, UDdepen, n, epslvl, propzi, struczero, model, penalty, relRMSPE.est) %>%
+  filter(population %in% "B" & propzi == 0.25 &  model != "oracle") %>%
   mutate(n = to_factor(n)) %>%
   arrange(model, penalty) %>%
   pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = relRMSPE.est, names_from = model) %>%
@@ -974,68 +904,13 @@ tbl_perf %>%
                    )) 
 ```
 
-```{r}
-#| fig-cap: "Scenario B with a linearly decreasing proportion of zero-inflation of starting from 75%"
-tbl_perf %>%
-  dplyr::select(scenario, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, relRMSPE.est) %>%
-  filter(scenario %in% "B" & propzi == 0.75 & revzi == FALSE & model != "oracle") %>%
-  mutate(n = to_factor(n)) %>%
-  arrange(model, penalty) %>%
-  pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = relRMSPE.est, names_from = model) %>%
-  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "struczero",
-                   steps_y_base = 0.5, steps_y_height = 0.1, 
-                   steps_names = "Residual variance",
-                   x_name = "Sample size", y_name = "Averaged relative RMSPE",
-                   spu_x_shift = 1.5,
-                   colors = ggcols[-1],
-                   steps_values_annotate = TRUE, steps_annotation_size = 2.5,
-                   hline_intercept = 1,
-                   y_expand_add = c(0.5, 0.25),
-                   post_processing = list(
-                       add_custom_theme = list(
-                         text=element_text(size = 14),
-                           axis.text.x = element_text(size = 14,
-                                                      angle = -90,
-                                                      vjust = 0.5),
-                         legend.position="top")
-                   )) 
-```
-
-```{r}
-#| fig-cap: "Scenario B with a linearly decreasing proportion of zero-inflation of starting from 25%"
-tbl_perf %>%
-  dplyr::select(scenario, UDdepen, n, epslvl, propzi, struczero, revzi, model,
-                penalty, relRMSPE.est) %>%
-  filter(scenario %in% "B" & propzi == 0.25 & revzi == FALSE & model != "oracle") %>%
-  mutate(n = to_factor(n)) %>%
-  arrange(model, penalty) %>%
-  pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = relRMSPE.est, names_from = model) %>%
-  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "struczero",
-                   steps_y_base = 0.5, steps_y_height = 0.1, 
-                   steps_names = "Residual variance",
-                   x_name = "Sample size", y_name = "Averaged relative RMSPE",
-                   spu_x_shift = 1.5,
-                   colors = ggcols[-1],
-                   steps_values_annotate = TRUE, steps_annotation_size = 2.5,
-                   hline_intercept = 1,
-                   y_expand_add = c(1, 0.5),
-                   post_processing = list(
-                       add_custom_theme = list(
-                         text=element_text(size = 14),
-                           axis.text.x = element_text(size = 14,
-                                                      angle = -90,
-                                                      vjust = 0.5),
-                         legend.position="top")
-                   )) 
-```
-
 ## Calibration
 
 ```{r}
-#| fig-cap: "Scenario B with a linearly increasing proportion of zero-inflation of up to 75%"
+#| fig-cap: "population B with a linearly increasing proportion of zero-inflation of up to 75%"
 tbl_perf %>%
-  dplyr::select(scenario, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, CS.est) %>%
-  filter(scenario %in% "B" & propzi == 0.75 & revzi == TRUE) %>%
+  dplyr::select(population, UDdepen, n, epslvl, propzi, struczero, model, penalty, CS.est) %>%
+  filter(population %in% "B" & propzi == 0.75 ) %>%
   mutate(n = to_factor(n)) %>%
   arrange(model, penalty) %>%
   pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = CS.est, names_from = model) %>%
@@ -1059,10 +934,10 @@ tbl_perf %>%
 ```
 
 ```{r}
-#| fig-cap: "Scenario B with a linearly increasing proportion of zero-inflation of up to 25%"
+#| fig-cap: "population B with a linearly increasing proportion of zero-inflation of up to 25%"
 tbl_perf %>%
-  dplyr::select(scenario,  UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, CS.est) %>%
-  filter(scenario %in% "B" & propzi == 0.25 & revzi == TRUE) %>%
+  dplyr::select(population,  UDdepen, n, epslvl, propzi, struczero, model, penalty, CS.est) %>%
+  filter(population %in% "B" & propzi == 0.25 ) %>%
   mutate(n = to_factor(n)) %>%
   arrange(model, penalty) %>%
   pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = CS.est, names_from = model) %>%
@@ -1085,67 +960,14 @@ tbl_perf %>%
                    )) 
 ```
 
-```{r}
-#| fig-cap: "Scenario B with a linearly decreasing proportion of zero-inflation of starting from 75%"
-tbl_perf %>%
-  dplyr::select(scenario,  UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, CS.est) %>%
-  filter(scenario %in% "B"  & propzi == 0.75 & revzi == FALSE) %>%
-  mutate(n = to_factor(n)) %>%
-  arrange(model, penalty) %>%
-  pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = CS.est, names_from = model) %>%
-  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "struczero",
-                   steps_y_base = 0.0, steps_y_height = 0.05, 
-                   steps_names = "Residual variance",
-                   x_name = "Sample size", y_name = "Averaged CS",
-                   spu_x_shift = 1.5,
-                   colors = ggcols,
-                   steps_values_annotate = TRUE, steps_annotation_size = 2.5,
-                   hline_intercept = 1,
-                   y_expand_add = c(1, 0.25),
-                   post_processing = list(
-                       add_custom_theme = list(
-                         text=element_text(size = 14),
-                           axis.text.x = element_text(size = 14,
-                                                      angle = -90,
-                                                      vjust = 0.5),
-                         legend.position="top")
-                   )) 
-```
-
-```{r}
-#| fig-cap: "Scenario B with a linearly decreasing proportion of zero-inflation of starting from 25%"
-tbl_perf %>%
-  dplyr::select(scenario, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, CS.est) %>%
-  filter(scenario %in% "B" & propzi == 0.25 & revzi == FALSE) %>%
-  mutate(n = to_factor(n)) %>%
-  arrange(model, penalty) %>%
-  pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = CS.est, names_from = model) %>%
-  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "struczero",
-                   steps_y_base = 0.25, steps_y_height = 0.05, 
-                   steps_names = "Residual variance",
-                   x_name = "Sample size", y_name = "Averaged CS",
-                   spu_x_shift = 1.5,
-                   colors = ggcols,
-                   steps_values_annotate = TRUE, steps_annotation_size = 2.5,
-                   hline_intercept = 1,
-                   y_expand_add = c(0.5, 0.15),
-                   post_processing = list(
-                       add_custom_theme = list(
-                         text=element_text(size = 14),
-                           axis.text.x = element_text(size = 14,
-                                                      angle = -90,
-                                                      vjust = 0.5),
-                         legend.position="top")
-                   )) 
-```
 
 ## R2
 
 ```{r}
-#| fig-cap: "Scenario B with a linearly increasing proportion of zero-inflation of up to 75%"
+#| fig-cap: "population B with a linearly increasing proportion of zero-inflation of up to 75%"
 tbl_perf %>%
-  dplyr::select(scenario, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, R2.est) %>%
-  filter(scenario %in% "B" & propzi == 0.75 & revzi == TRUE ) %>%
+  dplyr::select(population, UDdepen, n, epslvl, propzi, struczero,  model, penalty, R2.est) %>%
+  filter(population %in% "B" & propzi == 0.75 ) %>%
   mutate(n = to_factor(n)) %>%
   arrange(model, penalty) %>%
   pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = R2.est, names_from = model) %>%
@@ -1169,10 +991,10 @@ tbl_perf %>%
 ```
 
 ```{r}
-#| fig-cap: "Scenario B with a linearly increasing proportion of zero-inflation of up to 25%"
+#| fig-cap: "population B with a linearly increasing proportion of zero-inflation of up to 25%"
 tbl_perf %>%
-  dplyr::select(scenario, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, R2.est) %>%
-  filter(scenario %in% "B" & propzi == 0.25 & revzi == TRUE) %>%
+  dplyr::select(population, UDdepen, n, epslvl, propzi, struczero, model, penalty, R2.est) %>%
+  filter(population %in% "B" & propzi == 0.25 ) %>%
   mutate(n = to_factor(n)) %>%
   arrange(model, penalty) %>%
   pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = R2.est, names_from = model) %>%
@@ -1195,72 +1017,20 @@ tbl_perf %>%
                    )) 
 ```
 
-```{r}
-#| fig-cap: "Scenario B with a linearly decreasing proportion of zero-inflation of starting from 75%"
-tbl_perf %>%
-  dplyr::select(scenario, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, R2.est) %>%
-  filter(scenario %in% "B" & propzi == 0.75 & revzi == FALSE) %>%
-  mutate(n = to_factor(n)) %>%
-  arrange(model, penalty) %>%
-  pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = R2.est, names_from = model) %>%
-  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "struczero",
-                   steps_y_base = -0.15, steps_y_height = 0.05, 
-                   steps_names = "Residual variance",
-                   x_name = "Sample size", y_name = "Averaged R2",
-                   spu_x_shift = 1.5,
-                   colors = ggcols,
-                   steps_values_annotate = TRUE, steps_annotation_size = 2.5,
-                   hline_intercept = 0,
-                   y_expand_add = c(0.15, 0.15),
-                   post_processing = list(
-                       add_custom_theme = list(
-                         text=element_text(size = 14),
-                           axis.text.x = element_text(size = 14,
-                                                      angle = -90,
-                                                      vjust = 0.5),
-                         legend.position="top")
-                   )) 
-```
 
-```{r}
-#| fig-cap: "Scenario B with a linearly decreasing proportion of zero-inflation of starting from 25%"
-tbl_perf %>%
-  dplyr::select(scenario, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, R2.est) %>%
-  filter(scenario %in% "B" & propzi == 0.25 & revzi == FALSE) %>%
-  mutate(n = to_factor(n)) %>%
-  arrange(model, penalty) %>%
-  pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = R2.est, names_from = model) %>%
-  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "struczero",
-                   steps_y_base = -0.15, steps_y_height = 0.05, 
-                   steps_names = "Residual variance",
-                   x_name = "Sample size", y_name = "Averaged R2",
-                   spu_x_shift = 1.5,
-                   colors = ggcols,
-                   steps_values_annotate = TRUE, steps_annotation_size = 2.5,
-                   hline_intercept = 0,
-                   y_expand_add = c(0.15, 0.15),
-                   post_processing = list(
-                       add_custom_theme = list(
-                         text=element_text(size = 14),
-                           axis.text.x = element_text(size = 14,
-                                                      angle = -90,
-                                                      vjust = 0.5),
-                         legend.position="top")
-                   )) 
-```
 
 ## Variable selection
 
 ### Variable inclusion
 
 ```{r}
-#| fig-cap: "Scenario B with a linearly increasing proportion of zero-inflation of up to 75%"
+#| fig-cap: "population B with a linearly increasing proportion of zero-inflation of up to 75%"
 tbl_perf %>%
-  dplyr::select(scenario, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, df.est) %>%
-  filter(scenario %in% "B" & propzi == 0.75 & revzi == TRUE ) %>%
+  dplyr::select(population, UDdepen, n, epslvl, propzi, struczero,  model, penalty, npeps.est) %>%
+  filter(population %in% "B" & propzi == 0.75 ) %>%
   mutate(n = to_factor(n)) %>%
   arrange(model, penalty) %>%
-  pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = df.est, names_from = model) %>%
+  pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = npeps.est, names_from = model) %>%
   nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "struczero",
                    steps_y_base = -25, steps_y_height = 5, 
                    steps_names = "Residual variance",
@@ -1281,13 +1051,13 @@ tbl_perf %>%
 ```
 
 ```{r}
-#| fig-cap: "Scenario B with a linearly increasing proportion of zero-inflation of up to 25%"
+#| fig-cap: "population B with a linearly increasing proportion of zero-inflation of up to 25%"
 tbl_perf %>%
-  dplyr::select(scenario, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, df.est) %>%
-  filter(scenario %in% "B"  & propzi == 0.25 & revzi == TRUE ) %>%
+  dplyr::select(population, UDdepen, n, epslvl, propzi, struczero,  model, penalty, npeps.est) %>%
+  filter(population %in% "B"  & propzi == 0.25  ) %>%
   mutate(n = to_factor(n)) %>%
   arrange(model, penalty) %>%
-  pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = df.est, names_from = model) %>%
+  pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = npeps.est, names_from = model) %>%
   nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "struczero",
                    steps_y_base = -25, steps_y_height = 5, 
                    steps_names = "Residual variance",
@@ -1307,59 +1077,6 @@ tbl_perf %>%
                    )) 
 ```
 
-```{r}
-#| fig-cap: "Scenario B with a denearly increasing proportion of zero-inflation starting with 75%"
-tbl_perf %>%
-  dplyr::select(scenario, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, df.est) %>%
-  filter(scenario %in% "B" & propzi == 0.75 & revzi == FALSE) %>%
-  mutate(n = to_factor(n)) %>%
-  arrange(model, penalty) %>%
-  pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = df.est, names_from = model) %>%
-  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "struczero",
-                   steps_y_base = -25, steps_y_height = 5, 
-                   steps_names = "Residual variance",
-                   x_name = "Sample size", y_name = "Averaged number of incuded peptides",
-                   spu_x_shift = 1.5,
-                   colors = ggcols,
-                   steps_values_annotate = TRUE, steps_annotation_size = 2.5,
-                   hline_intercept = 0,
-                   y_expand_add = c(50, 15),
-                   post_processing = list(
-                       add_custom_theme = list(
-                         text=element_text(size = 14),
-                           axis.text.x = element_text(size = 14,
-                                                      angle = -90,
-                                                      vjust = 0.5),
-                         legend.position="top")
-                   )) 
-```
-
-```{r}
-#| fig-cap: "Scenario B with a denearly increasing proportion of zero-inflation starting with 25%"
-tbl_perf %>%
-  dplyr::select(scenario, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, df.est) %>%
-  filter(scenario %in% "B" & propzi == 0.25 & revzi == FALSE ) %>%
-  mutate(n = to_factor(n)) %>%
-  arrange(model, penalty) %>%
-  pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = df.est, names_from = model) %>%
-  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "struczero",
-                   steps_y_base = -25, steps_y_height = 5, 
-                   steps_names = "Residual variance",
-                   x_name = "Sample size", y_name = "Averaged number of incuded peptides",
-                   spu_x_shift = 1.5,
-                   colors = ggcols,
-                   steps_values_annotate = TRUE, steps_annotation_size = 2.5,
-                   hline_intercept = 0,
-                   y_expand_add = c(50, 15),
-                   post_processing = list(
-                       add_custom_theme = list(
-                         text=element_text(size = 14),
-                           axis.text.x = element_text(size = 14,
-                                                      angle = -90,
-                                                      vjust = 0.5),
-                         legend.position="top")
-                   )) 
-```
 
 ### Discovery rates
 
@@ -1367,10 +1084,10 @@ tbl_perf %>%
 #### TPDR
 
 ```{r}
-#| fig-cap: "Scenario B with a denearly increasing proportion of zero-inflation starting with 75%"
+#| fig-cap: "population B with a denearly increasing proportion of zero-inflation starting with 75%"
 tbl_allsel %>%
-  dplyr::select(scenario, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, TPDR) %>%
-  filter(scenario %in% "B" & propzi == 0.75 & revzi == TRUE) %>%
+  dplyr::select(population, UDdepen, n, epslvl, propzi, struczero, model, penalty, TPDR) %>%
+  filter(population %in% "B" & propzi == 0.75 ) %>%
   mutate(n = to_factor(n)) %>%
   arrange(model, penalty) %>%
   pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = TPDR, names_from = model) %>%
@@ -1396,10 +1113,10 @@ tbl_allsel %>%
 #### TNDR
 
 ```{r}
-#| fig-cap: "Scenario B with a denearly increasing proportion of zero-inflation starting with 75%"
+#| fig-cap: "population B with a denearly increasing proportion of zero-inflation starting with 75%"
 tbl_allsel %>%
-  dplyr::select(scenario, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, TNDR) %>%
-  filter(scenario %in% "B" & propzi == 0.75 & revzi == TRUE ) %>%
+  dplyr::select(population, UDdepen, n, epslvl, propzi, struczero,  model, penalty, TNDR) %>%
+  filter(population %in% "B" & propzi == 0.75 ) %>%
   mutate(n = to_factor(n)) %>%
   arrange(model, penalty) %>%
   pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = TNDR, names_from = model) %>%
@@ -1425,10 +1142,10 @@ tbl_allsel %>%
 #### FPDR
 
 ```{r}
-#| fig-cap: "Scenario B with a denearly increasing proportion of zero-inflation starting with 75%"
+#| fig-cap: "population B with a denearly increasing proportion of zero-inflation starting with 75%"
 tbl_allsel %>%
-  dplyr::select(scenario, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, FPDR) %>%
-  filter(scenario %in% "B" & propzi == 0.75 & revzi == TRUE ) %>%
+  dplyr::select(population, UDdepen, n, epslvl, propzi, struczero,  model, penalty, FPDR) %>%
+  filter(population %in% "B" & propzi == 0.75 ) %>%
   mutate(n = to_factor(n)) %>%
   arrange(model, penalty) %>%
   pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = FPDR, names_from = model) %>%
@@ -1454,10 +1171,10 @@ tbl_allsel %>%
 #### FNDR
 
 ```{r}
-#| fig-cap: "Scenario B with a denearly increasing proportion of zero-inflation starting with 75%"
+#| fig-cap: "population B with a denearly increasing proportion of zero-inflation starting with 75%"
 tbl_allsel %>%
-  dplyr::select(scenario, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, FNDR) %>%
-  filter(scenario %in% "B" & propzi == 0.75 & revzi == TRUE) %>%
+  dplyr::select(population, UDdepen, n, epslvl, propzi, struczero,  model, penalty, FNDR) %>%
+  filter(population %in% "B" & propzi == 0.75 ) %>%
   mutate(n = to_factor(n)) %>%
   arrange(model, penalty) %>%
   pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = FNDR, names_from = model) %>%
