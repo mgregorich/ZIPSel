@@ -8,18 +8,21 @@
 # --- Parameter ----
 print("1/5 - Start setup configuration:")
 set.seed(666)
-iter <- 10
-regenerate_simdata <- FALSE
+iter = 10
+regenerate_simdata = FALSE
+dsgn = "dsgn_1"
+xmean = 10
+xstd = 1
+beta_max = 2                              
+p = 200                                  
 
-n <- c(100, 200, 400)       # sample size
-p <- c(200)                      # number of candidate predictors
-beta_max <- 4                    # maximum coefficient
-UDdepen <- c("U", "U=2D", "U=D")             # medium balance of U and D influence on y
+n <- c(100, 200, 400)           
+UDdepen <- c("U", "U=2D", "U=D")             
 epslvl <- c("none", "moderate", "high")
 propzi <- c(0.25, 0.5, 0.75) 
 revzi <- c(FALSE, TRUE)
 struczero <- c(0.33, 0.66)
-population <- c("A", "B")
+population <- c("A", "B", "C")
 
 # --- General scenario matrix ----
 scenarios <- expand.grid(
@@ -27,17 +30,17 @@ scenarios <- expand.grid(
   population = population,
   n = n,
   p = p,
+  dsgn = dsgn,
   beta_max = beta_max,
   UDdepen = UDdepen,
   epslvl = epslvl,
   propzi = propzi,
   revzi = revzi, 
+  xmean = xmean,
+  xstd = xstd,
   struczero = struczero) %>%
-  mutate(dsgn = "dsgn_1",
-         xmean = 10,
-         xstd = 1,
-         beta_max = ifelse(p == 200 & population %in% "A", 1.20, beta_max),
-         beta_max = ifelse(population %in% "B", 4, beta_max)) %>% 
+  mutate(beta_max = ifelse(population %in% c("A", "C"), 1, beta_max),
+         beta_max = ifelse(population %in% "B", 2, beta_max)) %>% 
   arrange(population, n, p, epslvl) %>%
   filter(!(population %in% "B" & revzi == TRUE))
 

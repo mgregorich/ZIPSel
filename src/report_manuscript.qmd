@@ -1,0 +1,150 @@
+---
+title: "ZIPSel - Figures for manuscript"
+author: "Mariella Gregorich"
+affiliation: "Medical University of Vienna, Center for Medical Data Science"
+date: last-modified
+categories: [2023, simulation study, ZIPSel, R]
+description: "Classification: confidential"
+editor: visual
+theme: cosmo
+toc: true  
+number-sections: true
+colorlinks: true
+highlight-style: pygments
+format:
+  html: 
+    code-fold: true
+    code-tools: true
+    html-math-method: katex
+    self-contained: true
+---
+
+# Preliminaries
+
+```{r }
+rm(list=ls())
+
+source(here::here("src","functions_sim.R"))
+source(here::here("src","functions_aux.R"))
+#source(here::here("src","setup.R"))
+
+pacman::p_load(ggplot2, parallel, future.apply, stringr, kableExtra,
+               openxlsx, dplyr, tidyverse, simdata, looplot, gt)
+
+# Paths
+out.path <- "output"
+sim.date <- "2023-11-13"
+sim.file <- paste0("sim_", sim.date,"/")
+sim.path <- here::here(out.path, sim.file)
+ggcols <- c("black", "grey40","forestgreen","goldenrod2", "deepskyblue3","royalblue3", "darkred")
+methnames <- c("oracle", "ridge-oracle","lasso", "ridge", "ridge-lasso", "lasso-ridge", "ridge-garrote")
+# Read in results
+tbl_res <- readRDS(here::here(sim.path, "tbl_results_perf.rds"))
+
+tbl_perf <- tbl_res$tbl_perf  %>% 
+  mutate(model = fct_relevel(model, methnames))
+tbl_varsel <- tbl_res$tbl_varsel %>% 
+  mutate(model = fct_relevel(model, methnames))
+tbl_allsel <- tbl_res$tbl_allsel %>% 
+  mutate(model = fct_relevel(model, methnames))
+tbl_groupsel <- tbl_res$tbl_groupsel%>% 
+  mutate(model = fct_relevel(model, methnames))
+```
+
+# Predictive capabilities
+## Population A
+```{r}
+tbl_perf %>%
+  filter(n==100 & epslvl %in% "moderate" & struczero %in% "0.66" & revzi == TRUE & population == "A" & model != "oracle") %>%
+  mutate(RMSPE.est = ifelse(UDdepen == "U", RMSPE.est/10, RMSPE.est),
+         RMSPE.lo = ifelse(UDdepen == "U", RMSPE.lo/10, RMSPE.lo),
+         RMSPE.up = ifelse(UDdepen == "U", RMSPE.up/10, RMSPE.up))%>%
+  ggplot(aes(x=propzi, y=RMSPE.est, colour = model, group = model, ymin = RMSPE.lo, ymax = RMSPE.up)) +
+    geom_point() + 
+    geom_line() +
+    scale_y_continuous(name="RMSPE") +
+    geom_errorbar(width=0.05) +
+    scale_color_manual(values = ggcols[-1]) +
+    facet_grid(~ UDdepen) +
+    theme_bw()  +
+    theme(text = element_text(size=16), strip.text = element_text(size=18))
+
+```
+
+```{r}
+tbl_perf %>%
+  filter(n==100 & epslvl %in% "moderate" & struczero %in% "0.66" & revzi == TRUE & population == "A" & !model %in% c("oracle","ridge")) %>%
+
+  ggplot(aes(x=propzi, y=npeps.est, colour = model, group = model)) +
+    geom_point() + 
+    geom_line() +
+    scale_y_continuous(name="Number of included peptides") +
+    scale_color_manual(values = ggcols[-c(1,4)]) +
+    facet_grid(~ UDdepen) +
+    theme_bw()  +
+    theme(text = element_text(size=16), strip.text = element_text(size=18))
+
+```
+
+
+```{r}
+tbl_perf %>%
+  dplyr::select(population, UDdepen, n, epslvl, propzi, struczero,  revzi, model, penalty, relRMSPE.est) %>%
+  filter(struczero ==0.66 & propzi == 0.75 & revzi ==FALSE & model != "oracle") %>%
+#  mutate(RMSPE.est = ifelse(UDdepen == "U", RMSPE.est/10, RMSPE.est)) %>%
+  mutate(n = to_factor(n)) %>%
+  arrange(model, penalty) %>%
+  pivot_wider(id_cols = c(population, UDdepen, n, epslvl), values_from = relRMSPE.est, names_from = model) %>%
+  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "population",
+                   steps_y_base = 0.75, steps_y_height = 0.05, 
+                   steps_names = "Residual variance",
+                   x_name = "Sample size", y_name = "Relative RMSPE across simulation replicates",
+                   spu_x_shift = 1.5,
+                   colors = ggcols[-1],
+                   steps_values_annotate = TRUE, steps_annotation_size = 2.5,
+                   hline_intercept = 0,
+                   y_expand_add = c(0.15, 0.15),
+                   post_processing = list(
+                       add_custom_theme = list(
+                         text=element_text(size = 14),
+                           axis.text.x = element_text(size = 14,
+                                                      angle = -90,
+                                                      vjust = 0.5),
+                         legend.position="top")
+                   )) 
+ggsave(file = paste0(here::here("output", sim.file, "fig_sim_relrmspe.tiff")),
+       width=2*100, height=1.5*100, units="mm", dpi=350, compression = "lzw")
+```
+
+
+
+```{r}
+tbl_perf %>%
+  dplyr::select(population, UDdepen, n, epslvl, propzi, struczero,  revzi, model, penalty, RMSPE.est) %>%
+  filter(struczero ==0.66 & propzi == 0.75 & revzi ==FALSE & model != "oracle") %>%
+  mutate(RMSPE.est = ifelse(UDdepen == "U", RMSPE.est/10, RMSPE.est)) %>%
+  mutate(n = to_factor(n)) %>%
+  arrange(model, penalty) %>%
+  pivot_wider(id_cols = c(population, UDdepen, n, epslvl), values_from = RMSPE.est, names_from = model) %>%
+  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "population",
+                   steps_y_base = -1.5, steps_y_height = 0.25, 
+                   steps_names = "Residual variance",
+                   x_name = "Sample size", y_name = "RMSPE across simulation replicates",
+                   spu_x_shift = 1.5,
+                   colors = ggcols[-1],
+                   steps_values_annotate = TRUE, steps_annotation_size = 2.5,
+                   hline_intercept = 0,
+                   y_expand_add = c(2, 0.5),
+                   post_processing = list(
+                       add_custom_theme = list(
+                         text=element_text(size = 14),
+                           axis.text.x = element_text(size = 14,
+                                                      angle = -90,
+                                                      vjust = 0.5),
+                         legend.position="top")
+                   )) 
+ggsave(file = paste0(here::here("output", sim.file, "fig_sim_relrmspe.tiff")),
+       width=2*100, height=1.5*100, units="mm", dpi=350, compression = "lzw")
+```
+
+

@@ -28,11 +28,11 @@ source(here::here("src","functions_aux.R"))
 source(here::here("src","functions_sim.R"))
 
 # Load & save setup
-# source("src/setup.R")
+source("src/setup.R")
 setup <- readRDS(here::here("src", "scenario_setup.rds"))
 scenarios <- setup[[1]]
 sim_design <- setup[[2]]
-scenarios$iter <- 50
+scenarios$iter <- 3
 
 
 # ======================= Simulation ===========================================

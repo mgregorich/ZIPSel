@@ -23,6 +23,7 @@ perform_CVmethods <- function(i, data.obj, dataset){
   tbl_out <- cbind.data.frame(names_models, names_penalty, matrix(NA, nrow=length(names_models), ncol=4))
   colnames(tbl_out) <- c("model", "penalty", "R2", "RMSPE", "MAE", "CS")
   
+  # Data
   obj.train <- list("y" = data.obj$y[(1:n)[folds != i]],
                     "clinical" = data.obj$clinical[(1:n)[folds != i], ], 
                     "x" = data.obj$x[(1:n)[folds != i], ], 
@@ -37,15 +38,15 @@ perform_CVmethods <- function(i, data.obj, dataset){
   test <- dataset[(1:n)[folds == i], ]
   
   # Models
-  fit.lasso <- perform_penreg(obj.train, family = "gaussian", alpha1 = 1, cv = ncv, R = nR, penalty = "combined", split_vars = FALSE)
-  fit.ridge.ud <- perform_penreg(obj.train, family="gaussian", alpha1 = 0, cv=ncv, R=nR, penalty = "combined", split_vars = TRUE)
-  fit.ridge.x <- perform_penreg(obj.train, family = "gaussian", alpha1 = 0, cv = ncv, R = nR, penalty = "combined", split_vars = FALSE)
-  fit.lridge.ud <- perform_lridge(obj.train, family = "gaussian", cv = ncv, R = nR, penalty = "combined", split_vars = TRUE)
-  fit.lridge.x <- perform_lridge(obj.train, family = "gaussian", cv = ncv, R = nR, penalty = "combined", split_vars = FALSE)
-  fit.rlasso.ud <- perform_rlasso(obj.train, family = "gaussian", cv = ncv, R = nR, penalty = "combined", split_vars = TRUE)
-  fit.rlasso.x <- perform_rlasso(obj.train, family = "gaussian", cv = ncv, R = nR, penalty = "combined", split_vars = FALSE)
-  fit.rgarrote.ud <- perform_rgarrote(obj.train, family = "gaussian", cv = ncv, R = nR, penalty = "combined", split_vars = TRUE)
-  fit.rgarrote.x <- perform_rgarrote(obj.train, family = "gaussian", cv = ncv, R = nR, penalty = "combined", split_vars = FALSE)
+  fit.lasso <- perform_penreg(obj.train, family = "gaussian", alpha1 = 1, cv = ncv, R = nR, penalty = "combined", split_vars = FALSE, standardize_vars = TRUE)
+  fit.ridge.ud <- perform_penreg(obj.train, family="gaussian", alpha1 = 0, cv=ncv, R=nR, penalty = "combined", split_vars = TRUE, standardize_vars = TRUE)
+  fit.ridge.x <- perform_penreg(obj.train, family = "gaussian", alpha1 = 0, cv = ncv, R = nR, penalty = "combined", split_vars = FALSE, standardize_vars = TRUE)
+  fit.lridge.ud <- perform_lridge(obj.train, family = "gaussian", cv = ncv, R = nR, penalty = "combined", split_vars = TRUE, standardize_vars = TRUE)
+  fit.lridge.x <- perform_lridge(obj.train, family = "gaussian", cv = ncv, R = nR, penalty = "combined", split_vars = FALSE, standardize_vars = TRUE)
+  fit.rlasso.ud <- perform_rlasso(obj.train, family = "gaussian", cv = ncv, R = nR, penalty = "combined", split_vars = TRUE, standardize_vars = TRUE)
+  fit.rlasso.x <- perform_rlasso(obj.train, family = "gaussian", cv = ncv, R = nR, penalty = "combined", split_vars = FALSE, standardize_vars = TRUE)
+  fit.rgarrote.ud <- perform_rgarrote(obj.train, family = "gaussian", cv = ncv, R = nR, penalty = "combined", split_vars = TRUE, standardize_vars = TRUE)
+  fit.rgarrote.x <- perform_rgarrote(obj.train, family = "gaussian", cv = ncv, R = nR, penalty = "combined", split_vars = FALSE, standardize_vars = TRUE)
   fit.rf.notune <- ranger(y~., data = train %>% dplyr::select(-c(pred.rf.notune, pred.rf.tune)), num.trees = 1000)
   fit.rf.tune <- tuneMtryFast(y~., data = train %>% dplyr::select(-c(pred.rf.notune, pred.rf.tune)), num.trees = 1000, stepFactor = 0.5,
                               doBest = TRUE, plot = FALSE, trace = FALSE)
@@ -92,7 +93,6 @@ data_allpeptides <- data_mos[,7:ncol(data_mos)]
 colnames(data_allpeptides) <- paste0("P",1:ncol(data_allpeptides))
 rownames(data_allpeptides) <- paste0("N",1:nrow(data_allpeptides))
 data_allpeptides <- apply(as.matrix(data_allpeptides), 2, as.numeric)
-data_allpeptides <- scale(data_allpeptides)
 clin.vars <- c("Age", "Sex", "eGFR")
 
 # Data preparation
@@ -106,11 +106,12 @@ data_mos <- data_mos %>%
 
 ncv = 10
 nR  = 10
-vec_propz <-  rev(seq(0.1, 0.9, 0.1))
+vec_propz <-  seq(0.1, 0.9, 0.1)
 
 
 # Peptide subset selection due to computational feasibility based on max non-zero entries
 list_results <- list()
+plan(multisession, workers=10)
 for(l in 1:length(vec_propz)){
   propz <- vec_propz[l]
   ind <- which(apply(data_allpeptides, 2, max_proportionZI, prop_zero = propz))
@@ -123,51 +124,38 @@ for(l in 1:length(vec_propz)){
   folds <- sample(rep(1:ncv, ceiling(n/ncv)))[1:n]
   pflist <- list(c(1,2), c(2,1), c(1,3), c(3,1))
   
-  # Data transformation
-  x <- data_peptides
-  colnames(x) <- paste0("x.", colnames(x))
-  d <- (data_peptides != 0)*1
-  colnames(d) <- paste0("d.", colnames(d))
-  utmp <- apply(data_peptides, 2, function(x) ifelse(x == 0, 0, log2(x)))
-  u <- apply(utmp, 2, function(x) ifelse(x == 0, mean(x[x > 0]), x))
-  colnames(u) <- paste0("u.", colnames(u))
-  global_min <- min(data_peptides[data_peptides > 0])
-  ximp <- apply(data_peptides, 2, function(x) log2(ifelse(x == 0, global_min*(1/2), x)))
-  c <- data.frame("age" = data_mos$Age, "sex" = data_mos$Sex)
-  
   # Data object for models
-  data.obj <- list("y" = log2(data_mos$eGFR), "clinical" = c, x = ximp, u = u, d = d,
-                   pred.ridge.ud = NA, pred.ridge.x = NA,
-                   pred.lasso = NA,
-                   pred.lridge.ud = NA, pred.lridge.x = NA,
-                   pred.rgarrote.ud = NA, pred.rgarrote.x = NA,
-                   pred.rf.notune = NA, pred.rf.tune = NA)
-  
-  
+  data.obj <- generate_dataobj(y=log2(data_mos$eGFR), x=data_peptides, 
+                               clinical = data.frame("age" = data_mos$Age, "sex" = data_mos$Sex), 
+                               logtransform = TRUE)
+  data.obj <- c(data.obj,
+                 pred.lasso=NA, pred.ridge.ud=NA, pred.ridge.x=NA, 
+                 pred.lridge.ud=NA, pred.lridge.x=NA, 
+                 pred.rlasso.ud=NA, pred.rlasso.x=NA, 
+                 pred.rgarrote.ud=NA, pred.rgarrote.x=NA, 
+                 pred.rf.notune=NA, pred.rf.tune=NA)
   # Data frame for random forest
-  dataset <- data.frame(y = log2(data_mos$eGFR), age = data_mos$Age, sex = data_mos$Sex, x, pred.rf.notune = NA, pred.rf.tune = NA)
+  dataset <- data.frame(y = log2(data_mos$eGFR), age = data_mos$Age, sex = data_mos$Sex, x=data_peptides, pred.rf.notune = NA, pred.rf.tune = NA)
   
   # ----------- CV Predictions --------------------
   
   names_models <- rep(c("lasso", "ridge", "lasso-ridge", "ridge-lasso", "ridge-garrote", "random forest"), each=2)[-2]
   names_penalty <- c(rep(c("ud", "x"), 5)[-1], "without tuning", "with tuning")
   
-  plan(multisession, workers=10)
   tbl_performance <- future_lapply(1:ncv, function(x) perform_CVmethods(x, data.obj = data.obj, dataset = dataset), future.seed=TRUE)
-  plan(sequential)
   tbl_performance <- do.call(rbind, tbl_performance)
   
   # -------------------  Final model ----------------------
   list_model <- list()
-  list_model$fit.lasso <- perform_penreg(data.obj = data.obj, family = "gaussian", cv = ncv, R = nR, alpha1 = 1, penalty = "combined", split_vars = FALSE)
-  list_model$fit.ridge.ud <- perform_penreg(data.obj = data.obj, family = "gaussian", cv = ncv, R = nR, penalty = "combined", split_vars = TRUE)
-  list_model$fit.ridge.x <- perform_penreg(data.obj = data.obj, family = "gaussian", cv = ncv, R = nR, penalty = "combined", split_vars = FALSE)
-  list_model$fit.lridge.ud <- perform_lridge(data.obj = data.obj, family = "gaussian", cv = ncv, R = nR, penalty = "combined", split_vars = TRUE)
-  list_model$fit.lridge.x <- perform_lridge(data.obj = data.obj, family = "gaussian", cv = ncv, R = nR, penalty = "combined", split_vars = FALSE)
-  list_model$fit.rlasso.ud <- perform_rlasso(data.obj = data.obj, family = "gaussian", cv = ncv, R = nR, penalty = "combined", split_vars = TRUE)
-  list_model$fit.rlasso.x <- perform_rlasso(data.obj = data.obj, family = "gaussian", cv = ncv, R = nR, penalty = "combined", split_vars = FALSE)
-  list_model$fit.rgarrote.ud <- perform_rgarrote(data.obj = data.obj, family = "gaussian", cv = ncv, R = nR, penalty = "combined", split_vars = TRUE)
-  list_model$fit.rgarrote.x <- perform_rgarrote(data.obj = data.obj, family = "gaussian", cv = ncv, R = nR, penalty = "combined", split_vars = FALSE)
+  list_model$fit.lasso <- perform_penreg(data.obj = data.obj, family = "gaussian", cv = ncv, R = nR, alpha1 = 1, penalty = "combined", split_vars = FALSE, standardize_vars = TRUE)
+  list_model$fit.ridge.ud <- perform_penreg(data.obj = data.obj, family = "gaussian", cv = ncv, R = nR, penalty = "combined", split_vars = TRUE, standardize_vars = TRUE)
+  list_model$fit.ridge.x <- perform_penreg(data.obj = data.obj, family = "gaussian", cv = ncv, R = nR, penalty = "combined", split_vars = FALSE, standardize_vars = TRUE)
+  list_model$fit.lridge.ud <- perform_lridge(data.obj = data.obj, family = "gaussian", cv = ncv, R = nR, penalty = "combined", split_vars = TRUE, standardize_vars = TRUE)
+  list_model$fit.lridge.x <- perform_lridge(data.obj = data.obj, family = "gaussian", cv = ncv, R = nR, penalty = "combined", split_vars = FALSE, standardize_vars = TRUE)
+  list_model$fit.rlasso.ud <- perform_rlasso(data.obj = data.obj, family = "gaussian", cv = ncv, R = nR, penalty = "combined", split_vars = TRUE, standardize_vars = TRUE)
+  list_model$fit.rlasso.x <- perform_rlasso(data.obj = data.obj, family = "gaussian", cv = ncv, R = nR, penalty = "combined", split_vars = FALSE, standardize_vars = TRUE)
+  list_model$fit.rgarrote.ud <- perform_rgarrote(data.obj = data.obj, family = "gaussian", cv = ncv, R = nR, penalty = "combined", split_vars = TRUE, standardize_vars = TRUE)
+  list_model$fit.rgarrote.x <- perform_rgarrote(data.obj = data.obj, family = "gaussian", cv = ncv, R = nR, penalty = "combined", split_vars = FALSE, standardize_vars = TRUE)
   
   
   # Coefficients
@@ -219,15 +207,15 @@ for(l in 1:length(vec_propz)){
     relocate(propz, .after=penalty)
   
   # Runtime
-  mbm <- microbenchmark("lasso" = { b <- perform_penreg(data.obj = data.obj, family = "gaussian", cv = ncv, R = nR, alpha1 = 1, penalty = "combined", split_vars = FALSE)},
-                        "ridge_ud" = { b <- perform_penreg(data.obj = data.obj, family = "gaussian", cv = ncv, R = nR, penalty = "combined", split_vars = TRUE)},
-                        "ridge_x" = { b <- perform_penreg(data.obj = data.obj, family = "gaussian", cv = ncv, R = nR, penalty = "combined", split_vars = FALSE)},
-                        "lasso-ridge_ud" = { b <- perform_lridge(data.obj = data.obj, family = "gaussian", cv = ncv, R = nR, penalty = "combined", split_vars = TRUE)},
-                        "lasso-ridge_x" = { b <- perform_lridge(data.obj = data.obj, family = "gaussian", cv = ncv, R = nR, penalty = "combined", split_vars = FALSE)},
-                        "ridge-lasso_ud" = { b <- perform_rlasso(data.obj = data.obj, family = "gaussian", cv = ncv, R = nR, penalty = "combined", split_vars = TRUE)},
-                        "ridge-lasso_x" = { b <- perform_rlasso(data.obj = data.obj, family = "gaussian", cv = ncv, R = nR, penalty = "combined", split_vars = FALSE)},
-                        "ridge-garrote_ud" = { b <- perform_rgarrote(data.obj = data.obj, family = "gaussian", cv = ncv, R = nR, penalty = "combined", split_vars = TRUE)},
-                        "ridge-garrote_x" = { b <- perform_rgarrote(data.obj = data.obj, family = "gaussian", cv = ncv, R = nR, penalty = "combined", split_vars = FALSE)},
+  mbm <- microbenchmark("lasso" = { b <- perform_penreg(data.obj = data.obj, family = "gaussian", cv = ncv, R = nR, alpha1 = 1, penalty = "combined", split_vars = FALSE, standardize_vars = TRUE)},
+                        "ridge_ud" = { b <- perform_penreg(data.obj = data.obj, family = "gaussian", cv = ncv, R = nR, penalty = "combined", split_vars = TRUE, standardize_vars = TRUE)},
+                        "ridge_x" = { b <- perform_penreg(data.obj = data.obj, family = "gaussian", cv = ncv, R = nR, penalty = "combined", split_vars = FALSE, standardize_vars = TRUE)},
+                        "lasso-ridge_ud" = { b <- perform_lridge(data.obj = data.obj, family = "gaussian", cv = ncv, R = nR, penalty = "combined", split_vars = TRUE, standardize_vars = TRUE)},
+                        "lasso-ridge_x" = { b <- perform_lridge(data.obj = data.obj, family = "gaussian", cv = ncv, R = nR, penalty = "combined", split_vars = FALSE, standardize_vars = TRUE)},
+                        "ridge-lasso_ud" = { b <- perform_rlasso(data.obj = data.obj, family = "gaussian", cv = ncv, R = nR, penalty = "combined", split_vars = TRUE, standardize_vars = TRUE)},
+                        "ridge-lasso_x" = { b <- perform_rlasso(data.obj = data.obj, family = "gaussian", cv = ncv, R = nR, penalty = "combined", split_vars = FALSE, standardize_vars = TRUE)},
+                        "ridge-garrote_ud" = { b <- perform_rgarrote(data.obj = data.obj, family = "gaussian", cv = ncv, R = nR, penalty = "combined", split_vars = TRUE, standardize_vars = TRUE)},
+                        "ridge-garrote_x" = { b <- perform_rgarrote(data.obj = data.obj, family = "gaussian", cv = ncv, R = nR, penalty = "combined", split_vars = FALSE, standardize_vars = TRUE)},
                         "rf_notune" = { b <- ranger(y~., data = dataset %>% dplyr::select(-c(pred.rf.notune, pred.rf.tune)), num.trees = 1000)},
                         "rf_tune" =  { b <- tuneMtryFast(y~., data = dataset %>% dplyr::select(-c(pred.rf.notune, pred.rf.tune)), num.trees = 1000, 
                                                          stepFactor = 0.5, doBest = TRUE, plot = FALSE, trace = FALSE)}, times = 1
@@ -253,6 +241,7 @@ for(l in 1:length(vec_propz)){
   filename <- paste0("results_mosaique_pnz", propz, "_nR", nR,"_ncv", ncv,".rds")
   saveRDS(list_results[[l]], here::here("output", "example", filename))
 }
+plan(sequential)
 
 # --- Concatenate results across proportions of non-zero values ----
 res.files <- list.files(here::here("output", "example"), pattern = "results_")

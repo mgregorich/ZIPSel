@@ -46,16 +46,16 @@ setup <- readRDS(here::here("src", "scenario_setup.rds"))
 scenarios <- setup[[1]]
 sim_design <- setup[[2]]
 
-scn_nr = 449
+scn_nr = 718
 scn <- scenarios[scn_nr,]
 dsgn <- sim_design[[scenarios[scn_nr,]$dsgn]]
-scn$n <- 2000
 ```
+
 
 An explanation of the parameters in the scenario configuration is given below.
 
 | Variable                                                    | Abbreviation      | Description                                                                                                                                                                                       |
-|------------------|------------------|-------------------------------------|
+|------------------|------------------|------------------------------------|
 | Sample size                                                 | n                 | Number of samples within each dataset                                                                                                                                                             |
 | Number of candidate predictors                              | p                 | Number of predictors available to the data analyst                                                                                                                                                |
 | Scenario                                                    | \-                | Either A (all variables of group 1 are predictors) or B (5 predictors of each group are the true predictors)                                                                                      |
@@ -514,10 +514,6 @@ tbl_coef %>%
 
 ```{r}
 # --- Lasso-ridge 
-data.obj3 <- generate_dataobj_reduced(y = data_sim$data_ana$y, 
-                                 x = data_sim$data_ana$X,
-                             clinical = NULL, logtransform = FALSE, n=200)
-
 fit.lridge <- perform_lridge(data.obj, family = "gaussian", cv = ncv, R = nR, nlambda = rep(nlams, 2), 
                                 penalty = "combined", split_vars = TRUE)
 tbl_pred$pred.lridge <- predict_lridge(obj = fit.lridge, newdata = data.obj.val)

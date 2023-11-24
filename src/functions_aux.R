@@ -207,32 +207,6 @@ generate_dataobj <- function(y, x, clinical = NULL, logtransform = TRUE){
   return(data.obj)
 }
 
-generate_dataobj_reduced <- function(y, x, clinical = NULL, logtransform = TRUE, n){
-  perm_ind <- sort(sample(1:nrow(x), n, replace = FALSE))
-  colnames(x) <- paste0("x.", 1:ncol(x))
-  d <- (x != 0)*1
-  colnames(d) <- paste0("d.", 1:ncol(x)) 
-  if(logtransform){
-    u <- apply(x, 2, function(x) ifelse(x == 0, 0, log2(x)))
-    meanu <- mean(u[u > 0])
-    u[u==0] <- meanu
-    colnames(u) <- paste0("u.", 1:ncol(x))
-    global_min <- min(log2(x[x > 0]))
-    minval <- ifelse(global_min<0, global_min*2, global_min*(1/2))
-    ximp <- apply(x, 2, function(x) ifelse(x == 0, minval, log2(x)))   
-  }else{
-    u <- x
-    meanu <- mean(u[u > 0])
-    u[u==0] <- meanu
-    colnames(u) <- paste0("u.", 1:ncol(x))
-    global_min <- min(x[x > 0])
-    minval <- ifelse(global_min<0, global_min*2, global_min*(1/2))
-    ximp <- apply(x, 2, function(x) ifelse(x == 0, minval, x))    
-  }
-  
-  data.obj <- list("y" = y[perm_ind], "x" = ximp[perm_ind,], "u" = u[perm_ind,], "d" = d[perm_ind,], "clinical" = clinical)    
-  return(data.obj)
-}
 
 simcor.H <- function(k=4, size=c(10,10,10,10), 
                      rho=rbind(c(.8,.2), c(.8,.2), c(.8,.2), c(.2,.2)), power=1,
@@ -354,7 +328,7 @@ perform_penreg <- function(data.obj, penalties = 1, family = "gaussian", penalty
       set.seed(outer)
       # CV model with offset
       cv_model <- cv.glmnet(x = varmat, y = y, alpha = alpha1, standardize = standardize_vars, 
-                            lambda.min.ratio = 0.0001, offset = clin_offset, penalty.factor = pfvector,
+                            offset = clin_offset, penalty.factor = pfvector, lambda.min.ratio = 0.0001, 
                             nfolds = cv, nlambda = nl1)
       cvmerror[outer, ] <- cv_model$cvm
     }
@@ -369,7 +343,7 @@ perform_penreg <- function(data.obj, penalties = 1, family = "gaussian", penalty
   
   ## Final model
   # CV model with offset
-  fit.model <- glmnet(x = varmat, y = y, alpha = alpha1, standardize = standardize_vars, lambda.min.ratio = 0.0001,
+  fit.model <- glmnet(x = varmat, y = y, alpha = alpha1, standardize = standardize_vars, lambda.min.ratio = 0.0001, 
                       offset = clin_offset, penalty.factor = pfvector.min, nfolds = cv, nlambda = nl1)
   beta <- coef(fit.model)
   coeffs <- beta[, index[2]]
@@ -417,10 +391,10 @@ predict_penreg <- function(obj, newdata, type = "link", model = "ridge"){
 
 perform_lridge <- function(data.obj, family = "gaussian", nlambda = c(10,10), cv = 10, R = 1, alpha1 = 1, alpha2 = 0, 
                            penalty = "combined", pflist = NULL, split_vars = FALSE, standardize_vars = FALSE){
-
+  
   # data.obj = data.obj; family = "gaussian"; nlambda = rep(25,2); cv = 10; R = 1; alpha1 = 1; alpha2 = 0;
-  # pflist = NULL; penalty = "combined"; split_vars = TRUE; standardize_vars = FALSE
-
+  # pflist = NULL; penalty = "combined"; split_vars = TRUE
+  
   # Check for misspecifications
   start <- Sys.time()
   if(all(penalty != c("combined", "component"))){ stop("Penalty must be 'combined' or 'component'.") }
@@ -451,7 +425,7 @@ perform_lridge <- function(data.obj, family = "gaussian", nlambda = c(10,10), cv
   # get number of lambdas
   nl1 <- nlambda[1]
   nl2 <- nlambda[2]
-
+  
   if(k != ncol(d)) stop("d does not match x in dimensions\n")
   if(n != nrow(d) | n!= length(y)) stop("Not equal sample size in variables\n")
   
@@ -459,7 +433,7 @@ perform_lridge <- function(data.obj, family = "gaussian", nlambda = c(10,10), cv
   for(p in 1:npf){ # penalty loop
     # Penalty
     pf <- pflist[[p]]
-
+    
     prederr <- prederr2 <- matrix(0, nl1, nl2)
     for(outer in 1:R){ # outer loop for repetitions
       folds <- sample(rep(1:cv, ceiling(n/cv)))[1:n]
@@ -484,23 +458,22 @@ perform_lridge <- function(data.obj, family = "gaussian", nlambda = c(10,10), cv
           clin_offset_coefs <- fit.clin$coefficients[-1]
           clin_offset_train <- apply(c.train %>% dplyr::select(-y), 2, to_numeric) %*% clin_offset_coefs        
         }
-
+        
         # (1) Lasso regression
-        fit1.lasso <- glmnet(y = y.train, x = x.train, family = family, alpha = alpha1, nlambda = nl1, 
-                             offset = clin_offset_train, standardize = standardize_vars, lambda.min.ratio = 0.0001)
+        fit1.lasso <- glmnet(y = y.train, x = x.train, family = family, alpha = alpha1, standardize = standardize_vars,
+                             nlambda = nl1, offset = clin_offset_train, lambda.min.ratio = 0.0001)
         
         # (2) Ridge regression 
         for(i in 2:nl1){   # first lambda picks model with only intercept
           # Include u and d part of selected x variables
           b.lasso <- coef(fit1.lasso)[ ,i]
           nonzero.coefs <- names(b.lasso)[which(b.lasso != 0)][-1]
-          nonzero.ud <- c(str_replace_all(nonzero.coefs, "x.", "u."), 
-                          str_replace_all(nonzero.coefs, "x.", "d."))
           knz <- length(nonzero.coefs)   # k of non zero peptides
+          if(split_vars){nonzero.coefs <- c(str_replace_all(nonzero.coefs, "x.", "u."), str_replace_all(nonzero.coefs, "x.", "d."))          }
           
           # Ridge model with penalty
           pfvector <- rep(pf, each = knz) # pf should be c(1,1) if penalty="combined
-          fit2.ridge <- glmnet(y = y.train, x = var.train[ ,nonzero.ud], alpha = alpha2, nlambda = nl2, offset = clin_offset_train, 
+          fit2.ridge <- glmnet(y = y.train, x = var.train[ ,nonzero.coefs], alpha = alpha2, nlambda = nl2, offset = clin_offset_train,
                                penalty.factor = pfvector, standardize = standardize_vars, lambda.min.ratio = 0.0001)
           beta[rownames(coef(fit2.ridge)), (nl2*(i-1)+1):(nl2*(i-1)+nl1)] <- as.matrix(coef(fit2.ridge))          
         } # now we have all nl1*nl2*npf betas               
@@ -511,7 +484,7 @@ perform_lridge <- function(data.obj, family = "gaussian", nlambda = c(10,10), cv
         }else{clin_offset_test <- rep(0, sum(folds==inner))}
         for(i in 1:nl1){
           for(ii in 1:nl2){
-            yhat.test <- cbind(1, var.test) %*% beta[ , nl2*(ii-1)+i] + clin_offset_test
+            yhat.test <- cbind(1, var.test) %*% beta[ , nl2*(i-1)+ii] + clin_offset_test
             if(family == "binomial") yhat.test <- plogis(yhat.test)
             prederr[i, ii] <- prederr[i, ii] + mean((y.test - yhat.test)**2)/cv/R
             prederr2[i, ii] <- prederr2[i, ii] + ((mean((y.test - yhat.test)**2))**2)/cv/R
@@ -545,29 +518,31 @@ perform_lridge <- function(data.obj, family = "gaussian", nlambda = c(10,10), cv
   for(p in 1:npf){
     # Penalty
     pf <- pflist[[p]]
-
+    
     # (1) Lasso regression
-    fit1.lasso <- glmnet(y = y, x = xmat, family = family, alpha = alpha1, lambda.min.ratio = 0.0001, 
-                         nlambda = nl1, offset = clin_offset, standardize = standardize_vars)
+    fit1.lasso <- glmnet(y = y, x = xmat, family = family, alpha = alpha1, 
+                         nlambda = nl1, offset = clin_offset, standardize = standardize_vars, lambda.min.ratio = 0.0001)
     rownames(lambda) <- fit1.lasso$lambda
     
     # (2) Ridge regression with selected variables (continuous and binary part)
-    for(i in 2:nl2){
+    for(i in 2:nl1){
       # Include u and d part of selected vars
       b.lasso <- coef(fit1.lasso)[ ,i]
       nonzero.coefs <- names(b.lasso)[which(b.lasso != 0)][-1]
-      nonzero.ud <- c(str_replace_all(nonzero.coefs, "x.", "u."), 
-                      str_replace_all(nonzero.coefs, "x.", "d."))
-      knz <- length(nonzero.coefs)
+      knz <- length(nonzero.coefs)   # k of non zero peptides
+      if(split_vars){nonzero.coefs <- c(str_replace_all(nonzero.coefs, "x.", "u."), str_replace_all(nonzero.coefs, "x.", "d."))          }
+      
       
       # Ridge model with penalty
       pfvector <- rep(pf, each = knz)
-      fit2.ridge <- glmnet(y = y, x = varmat[ , nonzero.ud], alpha = alpha2, nlambda = nl2, lambda.min.ratio = 0.0001, 
-                                offset = clin_offset, penalty.factor = pfvector, standardize = standardize_vars)
+      fit2.ridge <- glmnet(y = y, x = varmat[ , nonzero.coefs], alpha = alpha2, nlambda = nl2, offset = clin_offset, 
+                           penalty.factor = pfvector, standardize = standardize_vars, lambda.min.ratio = 0.0001)
       lambda[i, , p] <- fit2.ridge$lambda
       df[i, ,p] <- fit2.ridge$df
-      beta[rownames(coef(fit2.ridge)), (nl2 * (i - 1) + 1):(nl2 * (i - 1) + nl1), p] <- as.matrix(coef(fit2.ridge))        
+      beta[rownames(coef(fit2.ridge)), (nl2 * (i - 1) + 1):(nl2 * (i - 1) + nl1), p] <- as.matrix(coef(fit2.ridge))          
     } # now we have all nl1*nl2*npf beta vectors  
+    
+    rownames(beta) <- ifelse(rep(isTRUE(split_vars),dim(varmat)[2]+1), c("(Intercept)", colnames(u), colnames(d)), c("(Intercept)", colnames(x)))
   }
   
   ## Return
@@ -579,7 +554,8 @@ perform_lridge <- function(data.obj, family = "gaussian", nlambda = c(10,10), cv
   
   # Coefs for best lambda
   coeffs <- beta[ , nl2 * (index[1] - 1) + index[2], index[3]]
-
+  names(coeffs) <- ifelse(rep(isTRUE(split_vars),dim(varmat)[2]+1), c("(Intercept)", colnames(u), colnames(d)), c("(Intercept)", colnames(x)))
+  
   # component-specific penalty factor
   pf.min <- pflist[[index[3]]]
   names(pf.min) <- "pf X"
@@ -596,11 +572,13 @@ perform_lridge <- function(data.obj, family = "gaussian", nlambda = c(10,10), cv
                          clin_offset = clin_offset, clin_offset_coefs = clin_offset_coefs,
                          coefficients = coeffs, beta = beta, 
                          index.lambda.min = c(index[1], index[2]), 
-                         fitted.values = fitted.values, split_vars = split_vars, standardize_vars = standardize_vars)) 
+                         fitted.values = fitted.values, split_vars = split_vars)) 
   attr(res,"class") <- "lasso-ridge"
   attr(res,"penalty")<- penalty
   return(res)
 }
+
+
 
 predict_lridge <- function(obj, newdata, type = "link"){
   x <- newdata[["x"]]

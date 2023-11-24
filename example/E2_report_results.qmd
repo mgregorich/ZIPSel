@@ -1,0 +1,198 @@
+---
+title: 'Mosaiques for ISCB44'
+author:
+  - name: "Mariella Gregorich"
+    affiliation: "Medical University of Vienna, Center for Medical Data Science"
+date: last-modified
+categories: [2023, ZIPSel, variable selection, R]
+description: "Classification: confidential"
+editor: visual
+theme: cosmo
+toc: true  
+number-sections: true
+colorlinks: true
+highlight-style: pygments
+format:
+  html: 
+    code-fold: true
+    code-tools: true
+    html-math-method: katex
+    self-contained: true
+---
+
+# Preliminaries
+
+```{r}
+rm(list = ls())
+
+pacman::p_load(ggplot2, parallel, future.apply, stringr, 
+               dplyr, tidyverse, tableone, concreg, gt,
+               glmnet, patchwork, ranger, tuneRanger, RColorBrewer, ggvenn)
+
+source(here::here("src","functions_aux.R"))
+cols_models <- c("forestgreen", "goldenrod2", "deepskyblue3", "royalblue3", "red3", "darkorchid4")
+
+
+```
+
+# Data
+
+```{r}
+list_results <- readRDS(here::here("output", "example", "results_mosaique_all_nR10_ncv10.rds"))
+
+
+tbl_perf <- list_results$performance %>%
+  mutate(model = fct_relevel(model, c("lasso", "ridge", "lasso-ridge", "ridge-lasso", "ridge-garrote","random forest")),
+         model_pen = paste0(model,"_", penalty),
+         penalty = fct_relevel(penalty, c("x", "ud", "without tuning", "with tuning"))) %>%
+  rename(variants = penalty)
+tbl_perfcv <- list_results$performance_ncv %>%
+  mutate(model = fct_relevel(model, c("lasso", "ridge", "lasso-ridge", "ridge-lasso", "ridge-garrote", "random forest")))
+tbl_mbm <- list_results$mbm %>%
+  mutate(model = fct_relevel(model, c("lasso", "ridge", "lasso-ridge", "ridge-lasso", "ridge-garrote","random forest")),
+         model_pen = paste0(model,"_", penalty),
+         penalty = fct_relevel(penalty, c("x", "ud", "without tuning", "with tuning"))) %>%
+  rename(variants = penalty)
+```
+
+# Results
+
+## Number of selected variables
+
+```{r}
+tbl_perf %>%
+  filter((variants != "x" | model %in% "lasso" ) & variants != "without tuning") %>%
+  mutate(data_transformation = ifelse(variants %in% c(" with tuning", "with tuning"), "orginal data", toupper(variants))) %>%
+  ggplot(.,aes(x=propz, y =df, group=model_pen, col=model, linetype=data_transformation)) +
+  geom_point() +
+  scale_linetype_manual("Data transformation",values = c(3,1,2)) +
+  scale_x_continuous("Proportion of zero-inflation", limits = c(0,1), breaks=seq(0,1,0.2)) +
+  scale_y_continuous("Number of selected peptides") +
+  scale_color_manual("Model", values = cols_models) +
+  geom_line() +
+  theme_bw() + 
+  guides(colour = guide_legend(order = 1), linetype = guide_legend(order = 2))
+ggsave(file = paste0(here::here("output", "example", "fig_mos_df.tiff")),
+       width=1.75*100, height=1*100, units="mm", dpi=350, compression = "lzw")
+```
+
+## R2
+
+::: panel-tabset
+### all methods
+
+```{r}
+tbl_perf %>%
+    filter( !(model %in% "random forest" & variants %in% "without tuning")) %>%
+  mutate(data_transformation = ifelse(variants %in% "with tuning", "orginal data", toupper(variants))) %>%
+  ggplot(.,aes(x=propz, y =R2, group=model_pen, col=model, linetype=data_transformation)) +
+  geom_point() +
+  scale_x_continuous("Proportion of zero-inflation", limits = c(0,1), breaks=seq(0,1,0.2)) +
+  scale_y_continuous("R2") +
+  scale_color_manual("Model", values = cols_models) +
+  scale_linetype_manual("Data transformation", values = c(3,1,2)) +
+  geom_line() +
+  theme_bw() + 
+  guides(colour = guide_legend(order = 1), linetype = guide_legend(order = 2))
+ggsave(file = paste0(here::here("output", "example", "fig_mos_r2_all.tiff")),
+       width=1.75*100, height=1*100, units="mm", dpi=350, compression = "lzw")
+```
+
+### with component split only
+
+```{r}
+tbl_perf %>%
+    filter((variants != "x" | model %in% "lasso" ) & variants != "without tuning") %>%
+  mutate(data_transformation = ifelse(variants %in% "with tuning", "orginal data", toupper(variants))) %>%
+  ggplot(.,aes(x=propz, y =R2, group=model_pen, col=model, linetype=data_transformation)) +
+  geom_point() +
+  scale_x_continuous("Proportion of zero-inflation", limits = c(0,1), breaks=seq(0,1,0.2)) +
+  scale_y_continuous("R2") +
+  scale_color_manual("Model", values = cols_models) +
+  scale_linetype_manual("Data transformation", values = c(3,1,2)) +
+  geom_line() +
+  theme_bw() + 
+  guides(colour = guide_legend(order = 1), linetype = guide_legend(order = 2))
+ggsave(file = paste0(here::here("output", "example", "fig_mos_r2_ud.tiff")),
+       width=1.75*100, height=1*100, units="mm", dpi=350, compression = "lzw")
+```
+:::
+
+## RMSPE
+
+::: panel-tabset
+### all methods
+
+```{r}
+tbl_perf %>%
+  filter( !(model %in% "random forest" & variants %in% "without tuning")) %>%
+  mutate(data_transformation = ifelse(variants %in% "with tuning", "orginal data", toupper(variants))) %>%
+  ggplot(.,aes(x=propz, y =RMSPE, group=model_pen, col=model, linetype=data_transformation)) +
+  scale_x_continuous("Proportion of zero-inflation", limits = c(0,1), breaks=seq(0,1,0.2)) +
+  scale_y_continuous("RMSPE", limits = c(0.315, 0.40)) +
+  scale_color_manual("Model", values = cols_models) +
+  scale_linetype_manual("Data transformation",values = c(3,1,2)) +
+  geom_point() +
+  geom_line() +
+  theme_bw() + 
+  guides(colour = guide_legend(order = 1), linetype = guide_legend(order = 2))
+ggsave(file = paste0(here::here("output", "example", "fig_mos_rmspe_all.tiff")),
+       width=1.75*100, height=1*100, units="mm", dpi=350, compression = "lzw")
+```
+
+### with component split only
+
+```{r}
+tbl_perf %>%
+  filter((variants != "x" | model %in% "lasso" ) & variants != "without tuning") %>%
+  mutate(data_transformation = ifelse(variants %in% "with tuning", "orginal data", toupper(variants))) %>%
+  ggplot(.,aes(x=propz, y =RMSPE, group=model_pen, col=model, linetype=data_transformation)) +
+  scale_x_continuous("Proportion of zero-inflation", limits = c(0,1), breaks=seq(0,1,0.2)) +
+  scale_y_continuous("RMSPE") +
+  scale_color_manual("Model", values = cols_models) +
+  scale_linetype_manual("Data transformation",values = c(3,1,2)) +
+  geom_point() +
+  geom_line() +
+  theme_bw() + 
+  guides(colour = guide_legend(order = 1), linetype = guide_legend(order = 2))
+ggsave(file = paste0(here::here("output", "example", "fig_mos_rmspe_ud.tiff")),
+       width=1.75*100, height=1*100, units="mm", dpi=350, compression = "lzw")
+```
+:::
+
+## Calibration slope
+
+```{r}
+tbl_perf %>%
+  filter((variants != "x" | model %in% "lasso" ) & variants != "without tuning") %>%
+  mutate(data_transformation = ifelse(variants %in% "with tuning", "orginal data", toupper(variants))) %>%
+  ggplot(.,aes(x=propz, y =CS, group=model_pen, col=model, linetype=data_transformation)) +
+  scale_x_continuous("Proportion of zero-inflation", limits = c(0,1), breaks=seq(0,1,0.2)) +
+  scale_y_continuous("Calibration slope") +
+  geom_hline(yintercept = 1, linetype="dashed") +
+  scale_color_manual("Model", values = cols_models) +
+  scale_linetype_manual("Data transformation", values = c(3,1,2)) +  
+  geom_point() +
+  geom_line() +
+  theme_bw() + 
+  guides(colour = guide_legend(order = 1), linetype = guide_legend(order = 2))
+ggsave(file = paste0(here::here("output", "example", "fig_mos_cs_all.tiff")),
+       width=1.75*100, height=1*100, units="mm", dpi=350, compression = "lzw")
+```
+
+## Run time
+
+```{r}
+tbl_mbm %>%
+    filter((variants != "x" | model %in% "lasso" ) & variants != "without tuning") %>%
+  ggplot(.,aes(x=propz, y =time, group=expr, col=model, shape=variants, linetype=variants)) +
+  scale_x_continuous("Proportion of zero-inflation", limits = c(0,1), breaks=seq(0,1,0.2)) +
+  scale_y_continuous("Run time") +
+  scale_color_manual("Model", values = cols_models) +
+  scale_linetype_manual("Data transformation", values = c(3,1,2)) +  
+  geom_point() +
+  geom_line() +
+  theme_bw()
+ggsave(file = paste0(here::here("output", "example", "fig_mos_runtime_all.tiff")),
+       width=1.75*100, height=1*100, units="mm", dpi=350, compression = "lzw")
+```

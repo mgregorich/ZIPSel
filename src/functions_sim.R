@@ -10,7 +10,7 @@
 simulate_scenario <- function(scn, dsgn){
   
   ## Remove later
-  # nr=455; scn=scenarios[nr,]; dsgn=sim_design[[scenarios[nr,]$dsgn]]
+  # nr=150; scn=scenarios[nr,]; dsgn=sim_design[[scenarios[nr,]$dsgn]]
 
   filename <- paste0("sim_i", scn$iter, "_scn", scn$population, "_n", scn$n, "_p", scn$p,"_beta", scn$beta_max, "_UDdepen", scn$UDdepen, 
                      "_eps", scn$epslvl, "_propzi", scn$propzi, "_revzi", tolower(scn$revzi), "_struczero", scn$struczero, ".rds")
@@ -120,6 +120,58 @@ data_generation <- function(dsgn, population, n, p, beta_max, a, epsstd, xmean, 
     vec_with_next_largest <- cbind(zi_specs$predind, sapply(zi_specs$predind, function(x) find_next_largest(x, zi_specs$predind)))
     one_group_zi_assignment <- unlist(c(sapply(1:4, function(i) zi_specs$predind[i] + 0:(apply(vec_with_next_largest, 1, diff)[i]-1)), zi_specs$predind[5]))
     zi_assignment <- c(rep(one_group_zi_assignment,2), rep(rev(one_group_zi_assignment),2)) + rep(c(0, cumsum(groupsize)[-ngroups]), times=groupsize)
+  }else if(population %in% "C"){
+    # population C
+    nelem <- c(groupsize[1], groupsize[2], 0, 0)
+    truepredindex <- 1:groupsize[1]
+    ptrue <- length(truepredindex)    
+    
+    # Generate coeffs and error 
+    beta_X <- beta_D <- rep(0, p)
+    # Group 1
+    perm_X <- c(38, 39, 28, 31, 9, 20, 21, 6, 17, 44, 42, 48, 19, 25, 2, 49, 50, 8, 41, 15, 36, 
+                18, 24, 40, 26, 10, 46, 16, 12, 22, 45, 34, 7, 47, 4, 14, 23, 37, 43, 29, 32, 30, 
+                3, 1, 5, 33, 27, 11, 35, 13)
+    scn_specs <- data.frame("rank_D"=50:1, "rank_X"=perm_X, "sum_rank_XD"=NA,"rank_XD"=NA)
+    scn_specs$sum_rank_XD <- scn_specs$rank_D + scn_specs$rank_X
+    scn_specs$rank_XD[with(scn_specs, order(scn_specs$sum_rank_XD, scn_specs$rank_D, decreasing=TRUE))] <- 1:50
+    scn_specs$predind[order(scn_specs$rank_XD)] <- truepredindex[1:50]
+    beta_values <- rev(seq(0.1, beta_max*(1/2), length.out = ptrue))
+    scn_specs$beta_D[order(scn_specs$rank_D, decreasing = TRUE)] <- beta_values
+    scn_specs$beta_X[order(scn_specs$rank_X, decreasing = TRUE)] <- beta_values
+    beta_D[scn_specs$predind] <- scn_specs$beta_D
+    beta_X[scn_specs$predind] <-  scn_specs$beta_X
+    
+    # Group 2 and 3
+    perm_X <- c(11, 16, 13, 7, 21, 18, 14, 20, 6, 5, 1, 4, 17, 10, 2, 8, 22, 12, 3, 15, 9, 23, 24, 25, 19)
+    scn_specs <- data.frame("rank_D"=25:1, "rank_X"=perm_X, "sum_rank_XD"=NA,"rank_XD"=NA)
+    scn_specs$sum_rank_XD <- scn_specs$rank_D + scn_specs$rank_X
+    scn_specs$rank_XD[with(scn_specs, order(scn_specs$sum_rank_XD, scn_specs$rank_D, decreasing=TRUE))] <- 1:25
+    scn_specs$predind[order(scn_specs$rank_XD)] <- c(1:25)+groupsize[1] + groupsize[2]/2
+    beta_values <- rev(seq(0.1, beta_max*(1/4), length.out = 25))
+    scn_specs$beta_D[order(scn_specs$rank_D, decreasing = TRUE)] <- beta_values
+    scn_specs$beta_X[order(scn_specs$rank_X, decreasing = TRUE)] <- beta_values
+    beta_X[scn_specs$predind] <- scn_specs$beta_X
+    beta_D[scn_specs$predind] <- scn_specs$beta_D
+    
+    perm_X <- c(14, 1, 24, 15, 21, 18, 13, 3, 6, 11, 2, 16, 12, 7, 22, 5, 23, 20, 10, 4, 17, 19, 9, 25, 8)
+    scn_specs <- data.frame("rank_D"=25:1, "rank_X"=perm_X, "sum_rank_XD"=NA,"rank_XD"=NA)
+    scn_specs$sum_rank_XD <- scn_specs$rank_D + scn_specs$rank_X
+    scn_specs$rank_XD[with(scn_specs, order(scn_specs$sum_rank_XD, scn_specs$rank_D, decreasing=TRUE))] <- 1:25
+    scn_specs$predind[order(scn_specs$rank_XD)] <- c(1:25)+groupsize[1]+groupsize[2]
+    beta_values <- rev(seq(0.1, beta_max*(1/2), length.out = 25))
+    scn_specs$beta_D[order(scn_specs$rank_D, decreasing = TRUE)] <- beta_values
+    scn_specs$beta_X[order(scn_specs$rank_X, decreasing = TRUE)] <- beta_values
+    beta_X[scn_specs$predind] <- scn_specs$beta_X
+    beta_D[scn_specs$predind] <- scn_specs$beta_D
+    
+    beta_X[c(1,100)] <- beta_X[c(1,100)]*2
+    beta_D[c(1,100)] <- beta_D[c(1,100)]*2
+    beta_X[c(165, 185)] <- c(1,0.5)
+    beta_D[c(165, 185)] <- c(0.25, 0.5)
+    # Zero-inflation
+    zi_assignment <- c(1:(p/2), p:(p/2+1))
+    
   }else{
     stop("population must be 'A' or 'B'")}
   
@@ -342,8 +394,9 @@ summarize_scenario <- function(filename, scn, scn_res){
               "extime.lo" = quantile(extime, 0.05, na.rm = T), "extime.up" = quantile(extime, 0.95, na.rm = T)) %>%
     data.frame()  %>%
     merge(scn, . ) %>%
-    mutate(RMSPE.std = RMSPE.est / epsstd)
-  
+    mutate(RMSPE.std = RMSPE.est / epsstd,
+           RMSPE.nstd = (RMSPE.est / epsstd)*sqrt(scn$n[1]),
+           MCSE.rmspe = sqrt(RMSPE.sd^2/niter))
   
   tbl_varsel <- tbl_iters_varsel %>% 
     group_by(model, penalty, varname) %>% 
