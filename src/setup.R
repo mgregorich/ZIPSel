@@ -8,7 +8,7 @@
 # --- Parameter ----
 print("1/5 - Start setup configuration:")
 set.seed(666)
-iter = 10
+iter = 500
 regenerate_simdata = FALSE
 dsgn = "dsgn_1"
 xmean = 10
@@ -20,14 +20,14 @@ n <- c(100, 200, 400)
 UDdepen <- c("U", "U=2D", "U=D")             
 epslvl <- c("none", "moderate", "high")
 propzi <- c(0.25, 0.5, 0.75) 
-revzi <- c(FALSE, TRUE)
+revzi <- c(FALSE)
 struczero <- c(0.33, 0.66)
-population <- c("A", "B", "C")
+OGM <- c("A", "B", "C")
 
 # --- General scenario matrix ----
 scenarios <- expand.grid(
   iter = iter,
-  population = population,
+  OGM = OGM,
   n = n,
   p = p,
   dsgn = dsgn,
@@ -39,10 +39,10 @@ scenarios <- expand.grid(
   xmean = xmean,
   xstd = xstd,
   struczero = struczero) %>%
-  mutate(beta_max = ifelse(population %in% c("A", "C"), 1, beta_max),
-         beta_max = ifelse(population %in% "B", 2, beta_max)) %>% 
-  arrange(population, n, p, epslvl) %>%
-  filter(!(population %in% "B" & revzi == TRUE))
+  mutate(beta_max = ifelse(OGM %in% c("A", "C"), 1, beta_max),
+         beta_max = ifelse(OGM %in% "B", 2, beta_max)) %>% 
+  arrange(OGM, n, p, epslvl) %>%
+  filter(!(OGM %in% c("B", "C") & revzi == TRUE))
 
 
 # --- Generate sim data generator ----
@@ -64,7 +64,7 @@ scenarios_UDdepen <- scenarios %>%
   relocate(a, .after=UDdepen) %>%
   filter(n==100 & epslvl == "none")
 for(i in 1:nrow(scenarios_UDdepen)){
-  print(i)
+  print(paste0(i, "/", nrow(scenarios_UDdepen)))
   scn = scenarios_UDdepen[i,]
   dsgn = list_design[[scenarios_UDdepen[i,]$dsgn]]
   if(scn$UDdepen=="U"){
@@ -72,7 +72,7 @@ for(i in 1:nrow(scenarios_UDdepen)){
     scenarios_UDdepen[i,]$check_varXD <- NA   
   }else{
     # Compute a
-    data.val <- data_generation(dsgn = dsgn, population = scn$population, n = 100000, p=scn$p, beta_max = scn$beta_max, 
+    data.val <- data_generation(dsgn = dsgn, OGM = scn$OGM, n = 100000, p=scn$p, beta_max = scn$beta_max, 
                                 a = scn$a, epsstd = 0, xmean = scn$xmean, xstd = scn$xstd,
                                 propzi = scn$propzi, revzi = scn$revzi, struczero = scn$struczero)
     
@@ -86,8 +86,8 @@ for(i in 1:nrow(scenarios_UDdepen)){
   }
 }
 scenarios <- scenarios %>% 
-  full_join(., scenarios_UDdepen[,c("population", "p","UDdepen", "propzi", "struczero", "revzi", "a", "check_varXD")], 
-            by=c("population", "p", "UDdepen", "propzi", "struczero", "revzi"))
+  full_join(., scenarios_UDdepen[,c("OGM", "p","UDdepen", "propzi", "struczero", "revzi", "a", "check_varXD")], 
+            by=c("OGM", "p", "UDdepen", "propzi", "struczero", "revzi"))
 print("3/5 - Determine UDdependence finished.")
 
 
@@ -97,14 +97,14 @@ scenarios_eps <- scenarios %>%
   relocate(epsstd, .after=epslvl) %>% 
   filter(n==100)
 for(i in 1:nrow(scenarios_eps)){
-  print(i)
+  print(paste0(i, "/", nrow(scenarios_eps)))
   scn = scenarios_eps[i,]
   dsgn = list_design[[scenarios_eps[i,]$dsgn]]
   if(scn$epslvl == "none"){
     scenarios_eps[i,]$epsstd <- 0
     scenarios_eps[i,]$check_R2 <- 1
   }else{
-    data.val <- data_generation(dsgn = dsgn, population = scn$population, n = 100000, p=scn$p, beta_max = scn$beta_max, 
+    data.val <- data_generation(dsgn = dsgn, OGM = scn$OGM, n = 100000, p=scn$p, beta_max = scn$beta_max, 
                                 a = scn$a, epsstd = 0, xmean = scn$xmean, xstd = scn$xstd,
                                 propzi = scn$propzi, revzi = scn$revzi, struczero = scn$struczero)
     
@@ -114,7 +114,7 @@ for(i in 1:nrow(scenarios_eps)){
     sd.eps <- sqrt(var.eps)
     
     # Check R2
-    data.val <- data_generation(dsgn = dsgn, population = scn$population, n = 10000, p=scn$p, beta_max = scn$beta_max, 
+    data.val <- data_generation(dsgn = dsgn, OGM = scn$OGM, n = 100000, p=scn$p, beta_max = scn$beta_max, 
                                 a = scn$a, epsstd = sd.eps, xmean = scn$xmean, xstd = scn$xstd,
                                 propzi = scn$propzi, revzi = scn$revzi, struczero = scn$struczero)
     checkR2 <- 1-(var(data.val$data_gen$eps)/var(data.val$data_gen$y))
@@ -123,8 +123,8 @@ for(i in 1:nrow(scenarios_eps)){
   }
 }
 scenarios <- scenarios %>% 
-  full_join(., scenarios_eps[,c("population", "p", "epslvl", "epsstd","UDdepen", "a","propzi", "struczero", "revzi", "a", "check_varXD", "check_R2")], 
-            by=c("population", "p", "epslvl", "UDdepen", "a","propzi", "struczero", "revzi", "check_varXD")) %>%
+  full_join(., scenarios_eps[,c("OGM", "p", "epslvl", "epsstd","UDdepen", "a","propzi", "struczero", "revzi", "a", "check_varXD", "check_R2")], 
+            by=c("OGM", "p", "epslvl", "UDdepen", "a","propzi", "struczero", "revzi", "check_varXD")) %>%
   dplyr::select(-a.1) %>%
   relocate(a, .after = UDdepen) %>%
   relocate(epsstd, .after=epslvl)

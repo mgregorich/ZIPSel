@@ -38,24 +38,23 @@ source(here::here("src","functions_sim.R"))
 # Parameter
 ngroups = 4
 nlams = 10
-nR=1
-ncv=10
+nR = 5
+ncv = 10
 
 # Load & save setup
 setup <- readRDS(here::here("src", "scenario_setup.rds"))
 scenarios <- setup[[1]]
 sim_design <- setup[[2]]
 
-scn_nr = 718
+scn_nr = 133 # 183, 237, 291
 scn <- scenarios[scn_nr,]
 dsgn <- sim_design[[scenarios[scn_nr,]$dsgn]]
 ```
 
-
 An explanation of the parameters in the scenario configuration is given below.
 
 | Variable                                                    | Abbreviation      | Description                                                                                                                                                                                       |
-|------------------|------------------|------------------------------------|
+|------------------|------------------|-----------------------------------|
 | Sample size                                                 | n                 | Number of samples within each dataset                                                                                                                                                             |
 | Number of candidate predictors                              | p                 | Number of predictors available to the data analyst                                                                                                                                                |
 | Scenario                                                    | \-                | Either A (all variables of group 1 are predictors) or B (5 predictors of each group are the true predictors)                                                                                      |
@@ -83,11 +82,15 @@ In this section, we will elaborate on the data simulation in order to generate t
 
 ```{r}
 # Data generation
-data_sim <- data_generation(dsgn = dsgn, population = scn$population, n = scn$n,
+data_sim <- data_generation(dsgn = dsgn, OGM = scn$OGM, n = scn$n,
                             p=scn$p, beta_max = scn$beta_max,
                             a = scn$a, epsstd = scn$epsstd, xmean= scn$xmean, xstd = scn$xstd,
                             propzi = scn$propzi, revzi = scn$revzi, 
                             struczero = scn$struczero)
+# Data object for models
+data.obj <- generate_dataobj(y = data_sim$data_ana$y, 
+                             z = data_sim$data_ana$X,
+                             clinical = NULL, logtransform = FALSE)
 true_beta <- data_sim$data_coef
 checkR2 <- round(1-(var(data_sim$data_gen$eps)/var(data_sim$data_gen$y)),2)
 print(paste0("Computed true R2 based on variance of y and residual variance =", checkR2))
@@ -129,13 +132,62 @@ p3 <- data.frame("intensity" = to_factor(c(data_sim$data_gen$D_struc))) %>%
 
 p_all <- (p1 ) / ( p2 + p3 ) + plot_annotation(tag_levels = list(c('(A)', '(B1)', '(B2)')))
 p_all
-
 ```
 
 The regression coefficients are according to the selected Scenario:
 
--   **population A**: Only peptides in group 1 have an effect on the outcome variable $y$. The effect is linearly decreasing for the true predictors in the continuous component $X_{struc}$, while it is permuted for the true predictors in the binary component $D_{struc}$, otherwise it is 0.
--   **population B**: In each group, 5 peptides which are spaced equally with regard to the index are true predictors. The effect again linearly decreases for the true predictors in the continuous component $X_{struc}$ and is randomly permuted for the true predictors in the binary component $D_{struc}$, otherwise 0.
+-   **OGM A**: Only peptides in group 1 have an effect on the outcome variable $y$. The effect is linearly decreasing for the true predictors in the continuous component $X_{struc}$, while it is permuted for the true predictors in the binary component $D_{struc}$, otherwise it is 0.
+-   **OGM B**: In each group, 5 peptides which are spaced equally with regard to the index are true predictors. The effect again linearly decreases for the true predictors in the continuous component $X_{struc}$ and is randomly permuted for the true predictors in the binary component $D_{struc}$, otherwise 0.
+
+```{r}
+scn_A <- scenarios[50,]
+data_simA <- data_generation(dsgn = dsgn, OGM = scn_A $OGM, n = scn_A $n,
+                            p=scn_A $p, beta_max = scn_A $beta_max,
+                            a = scn_A $a, epsstd = scn_A $epsstd, xmean= scn_A $xmean, xstd = scn_A $xstd,
+                            propzi = scn_A $propzi, revzi = scn_A $revzi, 
+                            struczero = scn_A $struczero)
+true_beta_A <- data_simA$data_coef %>%
+  mutate(OGM = "OGM A",
+         ind = as.numeric(str_remove_all(var, "V")),
+         group = rep(c("Group 1", "Group 2", "Group 3", "Group 4"), each=scn$p/ngroups))
+scn_B <- scenarios[250,]
+data_simB <- data_generation(dsgn = dsgn, OGM = scn_B$OGM, n = scn_B$n,
+                            p=scn_B$p, beta_max = scn_B$beta_max,
+                            a = scn_B$a, epsstd = scn_B$epsstd, xmean= scn_B$xmean, xstd = scn_B$xstd,
+                            propzi = scn_B$propzi, revzi = scn_B$revzi, 
+                            struczero = scn_B$struczero)
+true_beta_B <- data_simB$data_coef %>%
+  mutate(OGM = "OGM B",
+         ind = as.numeric(str_remove_all(var, "V")),
+         group = rep(c("Group 1", "Group 2", "Group 3", "Group 4"), each=scn$p/ngroups))
+scn_C <- scenarios[450,]
+data_simC <- data_generation(dsgn = dsgn, OGM = scn_C$OGM, n = scn_C$n,
+                            p=scn_C$p, beta_max = scn_C$beta_max,
+                            a = scn_C$a, epsstd = scn_C$epsstd, xmean= scn_C$xmean, xstd = scn_C$xstd,
+                            propzi = scn_C$propzi, revzi = scn_C$revzi, 
+                            struczero = scn_C$struczero)
+true_beta_C <- data_simC$data_coef %>%
+  mutate(OGM = "OGM C",
+         ind = as.numeric(str_remove_all(var, "V")),
+         group = rep(c("Group 1", "Group 2", "Group 3", "Group 4"), each=scn$p/ngroups))
+
+true_beta_all <- rbind(true_beta_A, true_beta_B, true_beta_C)
+true_beta_all %>%
+  dplyr::select(var, ind, group, OGM, beta_X, beta_D) %>%
+  pivot_longer(cols=c(beta_X, beta_D), names_to = "Effect", values_to = "coef") %>%
+  ggplot(aes(x=ind, y=coef, group=Effect, linetype=Effect, shape=Effect, color=Effect)) +
+  {if(scn$OGM=="B")geom_point()} +
+  geom_line() +
+  facet_grid(OGM~group, scales = "free_x") +
+  scale_x_continuous("Variable index") +
+  scale_y_continuous("Coefficient") +
+  scale_linetype_manual(values = c(1,2)) +
+  scale_color_manual(values=c("darkblue", "darkred")) +
+  theme_bw() +
+  theme(legend.position = "top", text = element_text(size=14))
+ggsave(file = here::here("output", "auxiliary","fig_coef_pops.tiff"),
+       width = 2.25*100, height = 2*100, units = "mm", dpi = 350, compression = "lzw")
+```
 
 ```{r}
 #| fig-cap: "Magnitude of true regression coefficients grouped by continuous component U and binary component D"
@@ -145,7 +197,7 @@ true_beta %>%
          group = rep(c("G1", "G2", "G3", "G4"), each=scn$p/ngroups)) %>%
   pivot_longer(cols=c(beta_X, beta_D), names_to = "Effect", values_to = "coef") %>%
   ggplot(aes(x=ind, y=coef, group=Effect, linetype=Effect, shape=Effect)) +
-  {if(scn$population=="B")geom_point()} +
+  {if(scn$OGM=="B")geom_point()} +
   geom_line() +
   facet_grid(~group, scales = "free_x") +
   scale_x_continuous("Variable index") +
@@ -197,6 +249,8 @@ pc2 <- ggplot(data = melted_Xstruc, aes(x=Var1, y=Var2, fill=value)) +
                        name="") +
   theme_bw() 
 pc1 + pc2 + plot_layout(guides = "collect") & theme(legend.position = 'bottom') 
+ggsave(file = here::here("output", "auxiliary","fig_corr_lognormal.tiff"), plot=pc1,
+       width = 1.25*100, height = 1*100, units = "mm", dpi = 350, compression = "lzw")
 ```
 
 ```{r}
@@ -284,14 +338,41 @@ true_beta %>%
   theme_bw() +
   theme(legend.position = "top")
 
-
 ```
 
+Theoretical distribution of zero-inflation for each of the three OGM settings (A, B, C)
+
 ```{r}
-# Data object for models
-data.obj <- generate_dataobj(y = data_sim$data_ana$y, 
-                             x = data_sim$data_ana$X,
-                             clinical = NULL, logtransform = FALSE)
+propzi_seq_A <- seq(0, 0.75, length.out=50)
+df_zi_A <- data.frame("OGM" = "A", "ind"=1:200, "group" = rep(c("Group 1", "Group 2", "Group 3", "Group 4"),each=50),
+                    "propzi"=rep(propzi_seq_A, 4), "struczi"=rep(propzi_seq_A, 4)*(1/3), "samplzi"=rep(propzi_seq_A, 4)*(2/3))
+propzi_seq_B <- c(seq(0.75/2, 0.75, length.out=25), seq(0, 0.75/2, length.out=25))
+df_zi_B <- data.frame("OGM" = "B", "ind"=1:200, "group" = rep(c("Group 1", "Group 2", "Group 3", "Group 4"),each=50),
+                    "propzi"=c(rep(propzi_seq_B, 2), rep(rev(propzi_seq_B), 2))) %>%
+  mutate("struczi"=propzi*(1/3), "samplzi"=propzi*(2/3))
+propzi_seq_C <- seq(0, 0.75, length.out=50)
+df_zi_C <- data.frame("OGM" = "C", "ind"=1:200, "group" = rep(c("Group 1", "Group 2", "Group 3", "Group 4"),each=50),
+                    "propzi"=c(rep(propzi_seq_C, 2), rep(rev(propzi_seq_C), 2))) %>%
+  mutate("struczi"=propzi*(1/3), "samplzi"=propzi*(2/3))
+df_zi <- rbind(df_zi_A, df_zi_B, df_zi_C)
+
+
+df_zi %>%
+  data.frame() %>%
+  pivot_longer(cols=c(propzi, struczi, samplzi), names_to = "ZI", values_to = "prop") %>%
+  mutate(ZI = fct_recode(ZI, "total"="propzi", "sampling"="samplzi", "structural"="struczi")) %>%
+  mutate(OGM=paste0("OGM ", OGM)) %>%
+  ggplot(aes(x=ind, y=prop, group=ZI, col=ZI, linetype=ZI)) +
+  geom_line() +
+  facet_grid(OGM~group, scales = "free_x") +
+  scale_x_continuous("Variable index") +
+  scale_y_continuous("Proportion of zero-inflation", limits = c(0,1)) +
+  scale_color_manual("Source of zero-inflation", values=c("black", "grey25", "grey55")) +
+  scale_linetype_discrete("Source of zero-inflation") +
+  theme_bw() +
+  theme(legend.position = "top")
+ggsave(file = here::here("output", "auxiliary","fig_zi_pops.tiff"),
+       width = 1.75*100, height = 1.5*100, units = "mm", dpi = 350, compression = "lzw")
 ```
 
 Another binary matrix, $D_{sam}$, determines which values are subject to sampling zeros. Values below specific quantiles of the log-normal distributed peptide intensities are set to zero based on proportions of sampling zero-inflation specified for each peptide individually, as depicted in the Figure above. The data analyst's final data set is obtained by element-wise multiplication of $D_{struc}$ and $D_{sam}$ with $X_{struc}$, which is shown in Panel (B1) in the previous section. Multiplication by $D_{struc}$ is necessary since zeros values were transformed to the mean in $X_{struc}$. The multiplication with $D_{sam}$ incorporates the sampling zeros. Thus, the final data set the data analyst receives has the following distribution:
@@ -308,22 +389,20 @@ Upon receipt of the data (Panel (A)), the data analyst may adjust the distributi
 
 ```{r}
 #| fig-cap: "Distribution of prepared peptide intensities excluding zero values"
-p1 <- data.frame("intensity" = c(data_sim$data_ana$X)) %>% 
+p1 <- data.frame("intensity" = c(unlist(data_sim$data_gen$data_logn))) %>% 
   ggplot(aes(x = intensity)) + 
   geom_histogram(col = "black", fill = "grey89", bins = 30) +
   scale_x_continuous("Intensity") +
   scale_y_continuous("Count") +
   theme_light() + 
-  theme(plot.title = element_text(hjust=0.5)) +
-  ggtitle("Data analyst's data")
+  theme(plot.title = element_text(hjust=0.5)) 
 p2 <- data.frame("intensity" = c(data.obj$x)) %>% 
   ggplot(aes(x = intensity)) + 
   geom_histogram(col = "black", fill = "grey89", bins = 30) +
   scale_x_continuous("Intensity") +
   scale_y_continuous("Count") +
   theme_light() + 
-  theme(plot.title = element_text(hjust=0.5)) +
-  ggtitle("Conventional approach: X")
+  theme(plot.title = element_text(hjust=0.5))
 p3 <- data.frame("intensity" = c(data.obj$u)) %>% 
   ggplot(aes(x = intensity)) + 
   geom_histogram(col = "black", fill = "grey89", bins = 30) +
@@ -331,7 +410,7 @@ p3 <- data.frame("intensity" = c(data.obj$u)) %>%
   scale_y_continuous("Count") +
   theme_light() + 
   theme(plot.title = element_text(hjust=0.5)) +
-  ggtitle("Data split: continuous U")
+  ggtitle("Design variable U")
 p4 <- data.frame("intensity" = to_factor(c(data.obj$d))) %>% 
   ggplot(aes(x = intensity)) + 
   geom_bar(col = "black", fill = "grey89") + 
@@ -339,24 +418,64 @@ p4 <- data.frame("intensity" = to_factor(c(data.obj$d))) %>%
   scale_y_continuous("Count") +
   theme_light()+
   theme(plot.title = element_text(hjust=0.5)) +
-  ggtitle("Data split: binary D")
+  ggtitle("Design variable D")
 
 p_all <- (p1 + p2 ) / ( p3 + p4 ) + plot_annotation(tag_levels = list(c('(A)', '(B)','(C1)', '(C2)')))
 p_all
+ggsave(file = here::here("output", "auxiliary","fig_design_vars_all.tiff"), plot=p_all,
+       width = 1.75*100, height = 1.5*100, units = "mm", dpi = 350, compression = "lzw")
+```
 
+```{r}
+#| fig-cap: "Distribution of prepared peptide intensities excluding zero values"
+p1 <- data.frame("intensity" = data_sim$data_gen$data_logn[,1]) %>% 
+  ggplot(aes(x = intensity)) + 
+  geom_histogram(col = "black", fill = "grey89", bins = 30) +
+  scale_x_continuous("Intensity") +
+  scale_y_continuous("Count") +
+  theme_light() + 
+  theme(plot.title = element_text(hjust=0.5)) 
+p2 <- data.frame("intensity" = data.obj$x[,1]) %>% 
+  ggplot(aes(x = intensity)) + 
+  geom_histogram(col = "black", fill = "grey89", bins = 30) +
+  scale_x_continuous("Intensity") +
+  scale_y_continuous("Count") +
+  theme_light() + 
+  theme(plot.title = element_text(hjust=0.5))
+p3 <- data.frame("intensity" = data.obj$u[,1]) %>% 
+  ggplot(aes(x = intensity)) + 
+  geom_histogram(col = "black", fill = "grey89", bins = 30) +
+  scale_x_continuous("Intensity") +
+  scale_y_continuous("Count") +
+  theme_light() + 
+  theme(plot.title = element_text(hjust=0.5)) +
+  ggtitle("Component variable U")
+p4 <- data.frame("intensity" = to_factor(data.obj$d[,1])) %>% 
+  ggplot(aes(x = intensity)) + 
+  geom_bar(col = "black", fill = "grey89") + 
+  scale_x_discrete("Intensity > 0") +
+  scale_y_continuous("Count") +
+  theme_light()+
+  theme(plot.title = element_text(hjust=0.5)) +
+  ggtitle("Component variable D")
+
+p_all <- (p1 + p2 ) / ( p3 + p4 ) + plot_annotation(tag_levels = list(c('(A)', '(B)','(C1)', '(C2)')))
+p_all
+ggsave(file = here::here("output", "auxiliary","fig_design_vars_one.tiff"), plot=p_all,
+       width = 1.75*100, height = 1.5*100, units = "mm", dpi = 350, compression = "lzw")
 ```
 
 ## Validation data
 
 ```{r}
 # Generate large validation dataset
-data.val <- data_generation(dsgn = dsgn, population = scn$population, n = 100000,
+data.val <- data_generation(dsgn = dsgn, OGM = scn$OGM, n = 100000,
                             p=scn$p, beta_max = scn$beta_max, 
                             a = scn$a, epsstd = scn$epsstd, xmean = scn$xmean, xstd = scn$xstd,
                             propzi = scn$propzi, revzi = scn$revzi, 
                             struczero = scn$struczero)
 data.obj.val <- generate_dataobj(y = data.val$data_ana$y, 
-                                 x = data.val$data_ana$X,
+                                 z = data.val$data_ana$X,
                              clinical = NULL, logtransform = FALSE)
 ```
 
@@ -368,15 +487,17 @@ data.val$data_coef %>%
          group = rep(c("G1", "G2", "G3", "G4"), each=scn$p/ngroups)) %>%
   pivot_longer(cols=c(beta_X, beta_D), names_to = "Effect", values_to = "coef") %>%
   ggplot(aes(x=ind, y=coef, group=Effect, linetype=Effect, shape=Effect)) +
-  {if(scn$population=="B")geom_point()} +
+  {if(scn$OGM=="B")geom_point()} +
   geom_line() +
   facet_grid(~group, scales = "free_x") +
   scale_x_continuous("Variable index") +
   scale_y_continuous("Coefficient") +
   scale_linetype_manual(values = c(2,1)) +
+  ggtitle(paste0("OGM ",scn$OGM)) +
   theme_bw() +
-  theme(legend.position = "top")
-
+  theme(legend.position = "bottom", plot.title = element_text(hjust = 0.5))
+ggsave(file = here::here("output", "auxiliary",paste0("fig_coef_pop",scn$OGM,".tiff")),
+       width = 2*100, height = 1*100, units = "mm", dpi = 350, compression = "lzw")
 ```
 
 # Data analysis
@@ -384,13 +505,13 @@ data.val$data_coef %>%
 In this section, the methods of analysis are presented below and the regression coefficients are displayed.
 
 ```{r}
-# Prep
-methnames <- c("oracle", "lasso", "ridge", "lasso-ridge", "ridge-lasso", "ridge-garrote")
+# Prepare data
+methnames <- c("oracle-OLS", "oracle-ridge", "lasso", "ridge", "lasso-ridge", "ridge-lasso", "ridge-garrote")
 tbl_perf <- data.frame("model" = methnames,
-                       "penalty" = c("-",rep(c("combined"), times = 5)),
-                       R2 = NA, RMSPE = NA, MAE = NA, CS = NA, df = NA, extime=NA)
+                       R2 = NA, RMSPE = NA, MAE = NA, CS = NA, npeps = NA, extime=NA)
 tbl_coef <-  true_beta %>% mutate(ind= as.numeric(str_remove_all(var, "V")))
 tbl_pred <- data.frame("y" = data.obj.val$y)
+beta_true <- c(true_beta$beta_X, true_beta$beta_D)
 
 # Parameter
 p <- scn$p
@@ -399,26 +520,21 @@ p <- scn$p
 
 ## Regression coefficients
 
-### Oracle
+### Oracle-OLS
 
-```{r}
+```{r oOLS}
 X <- cbind(data.obj$u, data.obj$d)
-# X <- cbind(data_sim$data_gen$X_struc, data_sim$data_gen$D_struc)
-beta_true <- c(true_beta$beta_X, true_beta$beta_D)
-Xtrue <- X[,which(beta_true!=0)]
-fit.oracle <- lm(data.obj$y~Xtrue)
+true_pred <- X[,which(beta_true!=0)]
+fit.oracle <- lm(data.obj$y~true_pred)
 beta_oracle <- rep(0, ncol(X)+1)
 beta_oracle[c(1,which(beta_true!=0)+1)] <- coef(fit.oracle)
 beta_oracle[is.na(beta_oracle)] <- 0 
-
 tbl_pred$pred.oracle <-  beta_oracle[1] + c(cbind(data.obj.val$u, data.obj.val$d) %*% beta_oracle[-1])
-
-# tbl_pred$pred.oracle <-  beta_oracle[1] + c(cbind(data.val$data_gen$X_struc, data.val$data_gen$D_struc) %*% beta_oracle[-1])
-tbl_perf[1, 3:6] <- eval_performance(pred = tbl_pred$pred.oracle, 
-                                     obs = tbl_pred$y)
-tbl_perf[1, "df"] <- floor(sum(beta_oracle[2:(2*(p+1))]!=0, na.rm=TRUE)/2)
+tbl_perf[1, 2:5] <- eval_performance(pred = tbl_pred$pred.oracle, obs = tbl_pred$y)
+tbl_perf[1, "npeps"] <- floor(sum(beta_oracle[2:(2*(p+1))]!=0, na.rm=TRUE)/2)
 tbl_coef$beta_oracle_u <- beta_oracle[2:(p+1)]
 tbl_coef$beta_oracle_d <- beta_oracle[(p+2):(2*p+1)]
+fit.oracle$coefficients <- NULL
 fit.oracle$coefficients <- beta_oracle
 attr(fit.oracle, "class") <- "oracle"
 attr(fit.oracle, "penalty") <- "-"
@@ -443,20 +559,102 @@ tbl_coef %>%
 
 ```
 
-### Lasso
+### Oracle-ridge
+
+```{r oridge}
+# --- Oracle-ridge
+X <- cbind(data.obj$u, data.obj$d)
+true_pred_ind <- which(beta_true!=0)
+data.obj.true <- list("y" = data_sim$data_ana$y, "x" = data.obj$x[,which(true_beta$beta_X!=0)], 
+                      "u" = data.obj$u[,which(true_beta$beta_X!=0)], 
+                      "d" = data.obj$d[,which(true_beta$beta_D!=0)], 
+                      "clinical" = data.obj$clinical)    
+fit.roracle <- perform_penreg(data.obj=data.obj.true, family = "gaussian",  alpha = 0, nl1 = nlams, cv = ncv, 
+                              R = nR,  split_vars = TRUE, lmin.ratio = 0.000001)
+tbl_pred$pred.roracle <- predict_penreg(obj = fit.roracle, newdata = data.obj.val, model = "roracle")
+tbl_perf[2, 2:5] <- eval_performance(pred = tbl_pred$pred.roracle, obs = tbl_pred$y)
+tbl_perf[2, "npeps"] <- fit.roracle$dfvars
+tbl_perf[2, "extime"] <- fit.roracle$extime
+beta_roracle <- rep(0,ncol(X)+1)
+beta_roracle[c(1, true_pred_ind+1)] <- fit.roracle$coefficients
+beta_roracle[is.na(beta_roracle)] <- 0 
+fit.roracle$coefficients <- NULL
+fit.roracle$coefficients <- beta_roracle
+tbl_coef$beta_roracle_u <- beta_roracle[2:(p+1)]
+tbl_coef$beta_roracle_d <- beta_roracle[(p+2):(2*p+1)]
+attr(fit.roracle, "class") <- "oracle-ridge"
+```
 
 ```{r}
+cvmse <- melt(fit.roracle$cv.pred.err)
+cvsd <- melt(fit.roracle$cv.pred.sd)
+cvmmat <- merge(cvmse, cvsd, by=c("Var1", "Var2"))
+colnames(cvmmat) <- c("R", "lambda", "cverr", "cvsd")
+cvmmat$cverr.lo <- cvmmat$cverr - 1.96 * cvmmat$cvsd
+cvmmat$cverr.up <- cvmmat$cverr + 1.96 * cvmmat$cvsd
+cvmmat$R <- to_factor(cvmmat$R)
+lambda_min <- fit.roracle$fit$lambda.min
+
+ggplot(cvmmat, aes(x=log(lambda), y=cverr, col=R)) +
+  geom_point() +
+  geom_pointrange(aes(ymin=cverr.lo, ymax=cverr.up)) +
+  geom_vline(xintercept = log(lambda_min), col="red", linetype="dashed") +
+  scale_y_continuous("Cross-validated mean squared error")+
+  scale_x_continuous("Log(λ)")+
+  theme_bw() 
+```
+
+```{r}
+tbl_coef %>%
+  mutate(coefid = 1:nrow(.)) %>%
+  pivot_longer(cols = c(beta_roracle_u, beta_roracle_d), names_to = "component",
+               values_to = "coef") %>%
+  mutate(component = toupper(str_sub(component, -1))) %>%
+  ggplot(aes(x = coef, y = coefid, group = component, col = component)) +
+  geom_point(shape = 1) +
+  scale_x_continuous("Coefficient") +
+  scale_y_continuous("Variable index") +
+  geom_line(orientation = "y") +
+  geom_vline(xintercept = 0, linetype = 2) +
+  scale_color_manual("Component", values = c("grey20", "red3")) +
+  theme_bw() +
+  facet_grid(~component) +
+  theme(plot.title = element_text(hjust = 0.5), legend.position = "None")
+
+```
+
+### Lasso
+
+```{r lasso}
 # --- Lasso
-fit.lasso <- perform_penreg(data.obj, family = "gaussian", alpha1 = 1, 
-                            nl1 = nlams, cv = ncv, R = nR, 
-                            penalty = "combined")
+fit.lasso <- perform_penreg(data.obj, family = "gaussian", alpha1 = 1,
+                            nl1 = nlams, cv = ncv, R = nR, lmin.ratio = 0.000001)
 tbl_pred$pred.lasso <- predict_penreg(obj = fit.lasso, 
                                       newdata = data.obj.val, model = "lasso")
-tbl_perf[2, 3:6] <- eval_performance(pred = tbl_pred$pred.lasso, 
+tbl_perf[3, 2:5] <- eval_performance(pred = tbl_pred$pred.lasso, 
                                      obs = tbl_pred$y)
-tbl_perf[2, "df"] <- fit.lasso$dfvars
-tbl_perf[2, "extime"] <- fit.lasso$extime
+tbl_perf[3, "npeps"] <- fit.lasso$dfvars
+tbl_perf[3, "extime"] <- fit.lasso$extime
 tbl_coef$beta_lasso <- fit.lasso$coefficients[-1]
+```
+
+```{r}
+cvmse <- melt(fit.lasso$cv.pred.err)
+cvsd <- melt(fit.lasso$cv.pred.sd)
+cvmmat <- merge(cvmse, cvsd, by=c("Var1", "Var2"))
+colnames(cvmmat) <- c("R", "lambda", "cverr", "cvsd")
+cvmmat$cverr.lo <- cvmmat$cverr - 1.96 * cvmmat$cvsd
+cvmmat$cverr.up <- cvmmat$cverr + 1.96 * cvmmat$cvsd
+cvmmat$R <- to_factor(cvmmat$R)
+lambda_min <- fit.lasso$fit$lambda.min
+
+ggplot(cvmmat, aes(x=log(lambda), y=cverr, col=R)) +
+  geom_point() +
+  geom_pointrange(aes(ymin=cverr.lo, ymax=cverr.up)) +
+  geom_vline(xintercept = log(lambda_min), col="red", linetype="dashed") +
+  scale_y_continuous("Cross-validated mean squared error")+
+  scale_x_continuous("Log(λ)")+
+  theme_bw() 
 ```
 
 ```{r}
@@ -476,17 +674,36 @@ tbl_coef %>%
 
 ### Ridge
 
-```{r}
+```{r ridge}
 # --- Ridge 
 fit.ridge <- perform_penreg(data.obj, family = "gaussian",  alpha = 0, 
                                nl1 = nlams, cv = ncv, R = nR, 
-                               penalty = "combined", split_vars = TRUE)
+                               split_vars = TRUE, lmin.ratio = 0.000001)
 tbl_pred$pred.ridge <- predict_penreg(obj = fit.ridge, newdata = data.obj.val, model = "ridge")
-tbl_perf[3, 3:6] <- eval_performance(pred = tbl_pred$pred.ridge, obs = tbl_pred$y)
-tbl_perf[3, "df"] <- fit.ridge$dfvars
-tbl_perf[3, "extime"] <- fit.ridge$extime
+tbl_perf[4, 2:5] <- eval_performance(pred = tbl_pred$pred.ridge, obs = tbl_pred$y)
+tbl_perf[4, "npeps"] <- fit.ridge$dfvars
+tbl_perf[4, "extime"] <- fit.ridge$extime
 tbl_coef$beta_ridge_u <- fit.ridge$coefficients[2:(p+1)]
 tbl_coef$beta_ridge_d <- fit.ridge$coefficients[(p+2):(2*p+1)]
+```
+
+```{r}
+cvmse <- melt(fit.ridge$cv.pred.err)
+cvsd <- melt(fit.ridge$cv.pred.sd)
+cvmmat <- merge(cvmse, cvsd, by=c("Var1", "Var2"))
+colnames(cvmmat) <- c("R", "lambda", "cverr", "cvsd")
+cvmmat$cverr.lo <- cvmmat$cverr - 1.96 * cvmmat$cvsd
+cvmmat$cverr.up <- cvmmat$cverr + 1.96 * cvmmat$cvsd
+cvmmat$R <- to_factor(cvmmat$R)
+lambda_min <- fit.ridge$fit$lambda.min
+
+ggplot(cvmmat, aes(x=log(lambda), y=cverr, col=R)) +
+  geom_point() +
+  geom_pointrange(aes(ymin=cverr.lo, ymax=cverr.up)) +
+  geom_vline(xintercept = log(lambda_min), col="red", linetype="dashed") +
+  scale_y_continuous("Cross-validated mean squared error")+
+  scale_x_continuous("Log(λ)")+
+  theme_bw() 
 ```
 
 ```{r}
@@ -512,17 +729,35 @@ tbl_coef %>%
 
 ### Lasso-ridge
 
-```{r}
+```{r lridge}
 # --- Lasso-ridge 
 fit.lridge <- perform_lridge(data.obj, family = "gaussian", cv = ncv, R = nR, nlambda = rep(nlams, 2), 
-                                penalty = "combined", split_vars = TRUE)
+                             split_vars = TRUE, lmin.ratio = 0.000001)
 tbl_pred$pred.lridge <- predict_lridge(obj = fit.lridge, newdata = data.obj.val)
-tbl_perf[4, 3:6] <- eval_performance(pred = tbl_pred$pred.lridge, obs = tbl_pred$y)
-tbl_perf[4, "df"] <- fit.lridge$dfvars
-tbl_perf[4, "extime"] <- fit.lridge$extime
+tbl_perf[5, 2:5] <- eval_performance(pred = tbl_pred$pred.lridge, obs = tbl_pred$y)
+tbl_perf[5, "npeps"] <- fit.lridge$dfvars
+tbl_perf[5, "extime"] <- fit.lridge$extime
 tbl_coef$beta_lridge_u <- fit.lridge$coefficients[2:(p+1)]
 tbl_coef$beta_lridge_d <- fit.lridge$coefficients[(p+2):(2*p+1)]
-tbl_perf
+```
+
+```{r}
+prederr <- fit.lridge$cv.pred.err
+df  <- melt(prederr, value.name = "cv.mse") %>%
+  `colnames<-`(c("lambda1", "lambda2", "cv.mse")) %>%
+  filter(lambda1 != 1) # first lambda only intercept available
+ind_lambda_min <- data.frame("lambda1"=fit.lridge$fit$index.lambda.min[1],
+                             "lambda2"=fit.lridge$fit$index.lambda.min[2])
+                             
+
+ggplot(df) +
+  geom_raster(aes(x = lambda1, y = lambda2, fill = cv.mse) ) +
+  scale_x_continuous("Index of lambda1", breaks = seq(1,nlams,1)) +
+  scale_y_continuous("Index of lambda2", breaks = seq(1,nlams,1)) +
+  scale_fill_gradient2(low = "white", high = "blue") +
+  geom_rect(data=ind_lambda_min, size=1, fill=NA, colour="black",
+            aes(xmin=lambda1 - 0.5, xmax=lambda1 + 0.5, ymin=lambda2 - 0.5, ymax=lambda2 + 0.5)) +
+  theme_bw()
 ```
 
 ```{r}
@@ -549,17 +784,35 @@ tbl_coef %>%
 
 ### Ridge-lasso
 
-```{r}
+```{r rlasso}
 # --- Ridge-lasso 
 fit.rlasso <- perform_rlasso(data.obj, family = "gaussian", cv = ncv, 
                                 R = nR, nlambda = rep(nlams, 2), 
-                                penalty = "combined", split_vars = TRUE)
+                                split_vars = TRUE, lmin.ratio = 0.000001)
 tbl_pred$pred.rlasso <- predict_rlasso(obj = fit.rlasso, newdata = data.obj.val)
-tbl_perf[5, 3:6] <- eval_performance(pred = tbl_pred$pred.rlasso, obs = tbl_pred$y)
-tbl_perf[5, "df"] <- fit.rlasso$dfvars
-tbl_perf[5, "extime"] <- fit.rlasso$extime
+tbl_perf[6, 2:5] <- eval_performance(pred = tbl_pred$pred.rlasso, obs = tbl_pred$y)
+tbl_perf[6, "npeps"] <- fit.rlasso$dfvars
+tbl_perf[6, "extime"] <- fit.rlasso$extime
 tbl_coef$beta_rlasso_u <- fit.rlasso$coefficients[2:(p+1)]
 tbl_coef$beta_rlasso_d <- fit.rlasso$coefficients[(p+2):(2*p+1)]
+```
+
+```{r}
+prederr <- fit.rlasso$cv.pred.err
+df  <- melt(prederr, value.name = "cv.mse") %>%
+  `colnames<-`(c("lambda1", "lambda2", "cv.mse")) 
+ind_lambda_min <- data.frame("lambda1"=fit.rlasso$fit$index.lambda.min[1],
+                             "lambda2"=fit.rlasso$fit$index.lambda.min[2])
+                             
+
+ggplot(df) +
+  geom_raster(aes(x = lambda1, y = lambda2, fill = cv.mse) ) +
+  scale_x_continuous("Index of lambda1", breaks = seq(1,nlams,1)) +
+  scale_y_continuous("Index of lambda2", breaks = seq(1,nlams,1)) +
+  scale_fill_gradient2(low = "white", high = "blue") +
+  geom_rect(data=ind_lambda_min, size=1, fill=NA, colour="black",
+            aes(xmin=lambda1 - 0.5, xmax=lambda1 + 0.5, ymin=lambda2 - 0.5, ymax=lambda2 + 0.5)) +
+  theme_bw()
 ```
 
 ```{r}
@@ -586,16 +839,35 @@ tbl_coef %>%
 
 ### Ridge-garrote
 
-```{r}
+```{r rgarrote}
 # --- Ridge-garrote
-fit.rgarrote <- perform_rgarrote(data.obj, family = "gaussian", cv = ncv, R = nR, nlambda = rep(nlams, 2),
-                                    penalty = "combined", alpha1 = 0, split_vars = TRUE)
+fit.rgarrote <- perform_rgarrote(data.obj, family = "gaussian", cv = ncv, R = nR, nlambda = rep(nlams, 2), 
+                                 split_vars = TRUE, lmin.ratio = 0.000001)
 tbl_pred$pred.rgarrote <- predict_rgarrote(obj = fit.rgarrote, newdata = data.obj.val)
-tbl_perf[6, 3:6] <- eval_performance(pred = tbl_pred$pred.rgarrote, obs = tbl_pred$y)
-tbl_perf[6, "df"] <- fit.rgarrote$dfvars
-tbl_perf[6, "extime"] <- fit.rgarrote$extime
+tbl_perf[7, 2:5] <- eval_performance(pred = tbl_pred$pred.rgarrote, obs = tbl_pred$y)
+tbl_perf[7, "npeps"] <- fit.rgarrote$dfvars
+tbl_perf[7, "extime"] <- fit.rgarrote$extime
 tbl_coef$beta_rgarrote_u <- fit.rgarrote$coefficients[2:(p+1)]
 tbl_coef$beta_rgarrote_d <- fit.rgarrote$coefficients[(p+2):(2*p+1)]
+```
+
+```{r}
+prederr <- fit.rgarrote$cv.pred.err
+df  <- melt(prederr, value.name = "cv.mse") %>%
+  `colnames<-`(c("lambda1", "lambda2", "cv.mse")) %>%
+  filter(lambda1 != 1)
+ind_lambda_min <- data.frame("lambda1"=fit.rgarrote$fit$index.lambda.min[1],
+                             "lambda2"=fit.rgarrote$fit$index.lambda.min[2])
+                             
+
+ggplot(df) +
+  geom_raster(aes(x = lambda1, y = lambda2, fill = cv.mse) ) +
+  scale_x_continuous("Index of lambda1", breaks = seq(1,nlams,1)) +
+  scale_y_continuous("Index of lambda2", breaks = seq(1,nlams,1)) +
+  scale_fill_gradient2(low = "white", high = "blue") +
+  geom_rect(data=ind_lambda_min, size=1, fill=NA, colour="black",
+            aes(xmin=lambda1 - 0.5, xmax=lambda1 + 0.5, ymin=lambda2 - 0.5, ymax=lambda2 + 0.5)) +
+  theme_bw()
 ```
 
 ```{r}
@@ -627,6 +899,7 @@ tbl_coef %>%
 # Variable selection
 groupsize <- scn$p/ngroups
 list_models <- list(fit.oracle,
+                    fit.roracle,
                     fit.lasso, 
                     fit.ridge, 
                     fit.rlasso,
@@ -635,7 +908,7 @@ list_models <- list(fit.oracle,
 list_sel <- list()
 for(l in 1:length(list_models)){
   fit.model <-  list_models[[l]]
-  list_sel[[l]] <- eval_selection(model = attr(fit.model, "class"), penalty = attr(fit.model, "penalty"), varnames = tbl_coef$var,
+  list_sel[[l]] <- eval_selection(model = attr(fit.model, "class"), varnames = tbl_coef$var,
                                   true_coef = true_beta, pred_coef = fit.model$coefficients, ngroups = ngroups, p = p)
 }
 tbl_varsel <- do.call(rbind, lapply(list_sel, function(x) x[[1]]))
@@ -644,13 +917,14 @@ tbl_allsel <- do.call(rbind, lapply(list_sel, function(x) x[[3]]))
 ```
 
 ```{r}
-tbl_allsel %>% mutate_at(3:6, round, 2) %>% gt()
+tbl_allsel %>% mutate_at(2:5, round, 2) %>% gt()
 ```
 
 ## Calibration
 
-```{r}
-pcal_oracle <- plot_calibration(pred = tbl_pred$pred.oracle, obs = tbl_pred$y, fig.title = "oracle")
+```{r calibration}
+pcal_oracle <- plot_calibration(pred = tbl_pred$pred.oracle, obs = tbl_pred$y, fig.title = "oracle-OLS")
+pcal_roracle <- plot_calibration(pred = tbl_pred$pred.roracle, obs = tbl_pred$y, fig.title = "oracle-ridge")
 pcal_lasso <- plot_calibration(pred = tbl_pred$pred.lasso, obs = tbl_pred$y, fig.title = "lasso")
 pcal_ridge <- plot_calibration(pred = tbl_pred$pred.ridge, obs = tbl_pred$y, fig.title = "ridge")
 pcal_lridge <- plot_calibration(pred = tbl_pred$pred.lridge, obs = tbl_pred$y, fig.title = "lasso-ridge")
@@ -667,7 +941,7 @@ pcal_rgarrote <- plot_calibration(pred = tbl_pred$pred.rgarrote, obs = tbl_pred$
 #| tbl-cap: "Results of all models"
 tbl_perf %>%
   data.frame() %>%
-  mutate(model=fct_relevel(model, c( "oracle","lasso", "ridge", "lasso-ridge",
+  mutate(model=fct_relevel(model, c( "oracle-OLS","oracle-ridge", "lasso", "ridge", "lasso-ridge",
                                      "ridge-lasso", "ridge-garrote")),
          relRMSPE=RMSPE/min(RMSPE)) %>%
   relocate(relRMSPE, .after=RMSPE) %>%

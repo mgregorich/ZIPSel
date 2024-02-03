@@ -34,45 +34,49 @@ pacman::p_load(ggplot2, parallel, future.apply, stringr, kableExtra,
 
 # Paths
 out.path <- "output"
-sim.date <- "2023-11-21"
+sim.date <- "2023_final"
 sim.file <- paste0("sim_", sim.date,"/")
 sim.path <- here::here(out.path, sim.file)
-ggcols <- c("black", "grey40","forestgreen","goldenrod2", "deepskyblue3","royalblue3", "red3")
-methnames <- c("oracle", "ridge-oracle","lasso", "ridge", "ridge-lasso", "lasso-ridge", "ridge-garrote")
+ggcols <- c("black", "grey40", "#D55E00","#E69F00", "#56B4E9", "#0072B2", "#009E73")
+methnames <- c("oracle-OLS", "oracle-ridge","lasso", "ridge", "lasso-ridge", "ridge-lasso", "ridge-garrote")
 # Read in results
 tbl_res <- readRDS(here::here(sim.path, "tbl_results_perf.rds"))
 
-tbl_perf <- tbl_res$tbl_perf  %>% 
-  mutate(model = fct_relevel(model, methnames))
+tbl_perf <- tbl_res$tbl_perf %>% 
+  mutate(model = ifelse(model == "ridge-oracle", "oracle-ridge", model),
+         model = fct_relevel(model, methnames)) 
 tbl_varsel <- tbl_res$tbl_varsel %>% 
-  mutate(model = fct_relevel(model, methnames))
+  mutate(model = ifelse(model == "ridge-oracle", "oracle-ridge", model),
+         model = fct_relevel(model, methnames)) 
 tbl_allsel <- tbl_res$tbl_allsel %>% 
-  mutate(model = fct_relevel(model, methnames))
-tbl_groupsel <- tbl_res$tbl_groupsel%>% 
-  mutate(model = fct_relevel(model, methnames))
+  mutate(model = ifelse(model == "ridge-oracle", "oracle-ridge", model),
+         model = fct_relevel(model, methnames))  
+tbl_groupsel <- tbl_res$tbl_groupsel %>% 
+  mutate(model = ifelse(model == "ridge-oracle", "oracle-ridge", model),
+         model = fct_relevel(model, methnames))  
+
 ```
 
 # Scenario A
 
 ## RMSPE
 
-
 ```{r}
-#| fig-cap: "Population A with a linearly increasing proportion of zero-inflation of up to 75%"
+#| fig-cap: "OGM A with a linearly decreasing proportion of zero-inflation of starting from 75%"
 tbl_perf %>%
-  dplyr::select(population, UDdepen, n, epslvl, propzi, struczero, 
-                revzi, model, penalty, RMSPE.est) %>%
-  filter(population %in% "A" & propzi == 0.75 & revzi == TRUE & 
-           model != "oracle") %>%
+  dplyr::select(OGM, UDdepen, n, epslvl, propzi, struczero, 
+                revzi, model,  RMSPE.est) %>%
+  filter(OGM %in% "A" & propzi == 0.75 & revzi == FALSE & 
+           model != "oracle-OLS") %>%
   mutate(n = to_factor(n)) %>%
   mutate(RMSPE.est = ifelse(UDdepen == "U", RMSPE.est/10, RMSPE.est)) %>%
-  arrange(model, penalty) %>%
+  arrange(model) %>%
   pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), 
               values_from = RMSPE.est, names_from = model) %>%
   nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" ,
                    grid_rows = "struczero",
                    steps_y_base = -0.5, steps_y_height = 0.1, 
-                   steps_names = "Residual variance",
+                   steps_names = "Target R\U00B2",
                    x_name = "Sample size", y_name = "Averaged RMSPE",
                    spu_x_shift = 1.5,
                    grid_scales="free_y",
@@ -92,88 +96,21 @@ tbl_perf %>%
 ```
 
 ```{r}
-#| fig-cap: "Population A with a linearly increasing proportion of zero-inflation of up to 25%"
+#| fig-cap: "OGM A with a linearly decreasing proportion of zero-inflation of starting from 25%"
 tbl_perf %>%
-  dplyr::select(population, UDdepen, n, epslvl, propzi, struczero, revzi,
-                model, penalty, RMSPE.est) %>%
-  filter(population %in% "A" & propzi == 0.25 & revzi == TRUE & 
-           model != "oracle" ) %>%
+  dplyr::select(OGM, UDdepen, n, epslvl, propzi, struczero, revzi,
+                model,  RMSPE.est) %>%
+  filter(OGM %in% "A" & propzi == 0.25 & revzi == FALSE & 
+           model != "oracle-OLS" ) %>%
   mutate(n = to_factor(n),
          RMSPE.est = ifelse(UDdepen == "U", RMSPE.est/10, RMSPE.est)) %>%
-  arrange(model, penalty) %>%
+  arrange(model) %>%
   pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), 
               values_from = RMSPE.est, names_from = model) %>%
   nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , 
                    grid_rows = "struczero",
                    steps_y_base = -1, steps_y_height = 0.15, 
-                   steps_names = "Residual variance",
-                   x_name = "Sample size", y_name = "Averaged RMSPE",
-                   spu_x_shift = 1.5,
-                   grid_scales="free_y",
-                   colors = ggcols[-1],
-                   steps_values_annotate = TRUE, steps_annotation_size = 2.5,
-                   hline_intercept = 0,
-                   y_expand_add = c(1, 0.5),
-                   post_processing = list(
-                       add_custom_theme = list(
-                         text=element_text(size = 14),
-                           axis.text.x = element_text(size = 14,
-                                                      angle = -90,
-                                                      vjust = 0.5),
-                         legend.position="top")
-                   )) 
-```
-
-```{r}
-#| fig-cap: "Population A with a linearly decreasing proportion of zero-inflation of starting from 75%"
-tbl_perf %>%
-  dplyr::select(population, UDdepen, n, epslvl, propzi, struczero, 
-                revzi, model, penalty, RMSPE.est) %>%
-  filter(population %in% "A" & propzi == 0.75 & revzi == FALSE & 
-           model != "oracle") %>%
-  mutate(n = to_factor(n)) %>%
-  mutate(RMSPE.est = ifelse(UDdepen == "U", RMSPE.est/10, RMSPE.est)) %>%
-  arrange(model, penalty) %>%
-  pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), 
-              values_from = RMSPE.est, names_from = model) %>%
-  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" ,
-                   grid_rows = "struczero",
-                   steps_y_base = -0.5, steps_y_height = 0.1, 
-                   steps_names = "Residual variance",
-                   x_name = "Sample size", y_name = "Averaged RMSPE",
-                   spu_x_shift = 1.5,
-                   grid_scales="free_y",
-                   colors = ggcols[-1],
-                   steps_values_annotate = TRUE, 
-                   steps_annotation_size = 2.5,
-                   hline_intercept = 0,
-                   y_expand_add = c(1, 0.5),
-                   post_processing = list(
-                       add_custom_theme = list(
-                         text=element_text(size = 14),
-                           axis.text.x = element_text(size = 14,
-                                                      angle = -90,
-                                                      vjust = 0.5),
-                         legend.position="top")
-                   )) 
-```
-
-```{r}
-#| fig-cap: "Population A with a linearly decreasing proportion of zero-inflation of starting from 25%"
-tbl_perf %>%
-  dplyr::select(population, UDdepen, n, epslvl, propzi, struczero, revzi,
-                model, penalty, RMSPE.est) %>%
-  filter(population %in% "A" & propzi == 0.25 & revzi == FALSE & 
-           model != "oracle" ) %>%
-  mutate(n = to_factor(n),
-         RMSPE.est = ifelse(UDdepen == "U", RMSPE.est/10, RMSPE.est)) %>%
-  arrange(model, penalty) %>%
-  pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), 
-              values_from = RMSPE.est, names_from = model) %>%
-  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , 
-                   grid_rows = "struczero",
-                   steps_y_base = -1, steps_y_height = 0.15, 
-                   steps_names = "Residual variance",
+                   steps_names = "Target R\U00B2",
                    x_name = "Sample size", y_name = "Averaged RMSPE",
                    spu_x_shift = 1.5,
                    grid_scales="free_y",
@@ -194,73 +131,16 @@ tbl_perf %>%
 ## Relative RMSPE
 
 ```{r}
-#| fig-cap: "Population A with a linearly increasing proportion of zero-inflation of up to 75%"
+#| fig-cap: "OGM A with a linearly decreasing proportion of zero-inflation of starting from 75%"
 tbl_perf %>%
-  dplyr::select(population, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, relRMSPE.est) %>%
-  filter(population %in% "C"  & propzi == 0.75 & revzi == TRUE & model != "oracle") %>%
+  dplyr::select(OGM, UDdepen, n, epslvl, propzi, struczero, revzi, model,  relRMSPE.est) %>%
+  filter(OGM %in% "A" & propzi == 0.75 & revzi == FALSE & model != "oracle-OLS") %>%
   mutate(n = to_factor(n)) %>%
-  arrange(model, penalty) %>%
-  pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = relRMSPE.est, names_from = model) %>%
-  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , 
-                   grid_rows = "struczero",
-                   steps_y_base = 0.5, steps_y_height = 0.05, 
-                   steps_names = "Residual variance",
-                   x_name = "Sample size", y_name = "Averaged relative RMSPE",
-                   spu_x_shift = 1.5,
-                   colors = ggcols[-1],
-                   steps_values_annotate = TRUE, steps_annotation_size = 2.5,
-                   hline_intercept = 1,
-                   y_expand_add = c(0.5, 0.25),
-                   post_processing = list(
-                       add_custom_theme = list(
-                         text=element_text(size = 14),
-                           axis.text.x = element_text(size = 14,
-                                                      angle = -90,
-                                                      vjust = 0.5),
-                         legend.position="top")
-                   )) 
-```
-
-```{r}
-#| fig-cap: "Population A with a linearly increasing proportion of zero-inflation of up tp 25%"
-tbl_perf %>%
-  dplyr::select(population, UDdepen, n, epslvl, propzi, struczero, revzi, model,
-                penalty, relRMSPE.est) %>%
-  filter(population %in% "A" & propzi == 0.25 & revzi == TRUE & model != "oracle") %>%
-  mutate(n = to_factor(n)) %>%
-  arrange(model, penalty) %>%
-  pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = relRMSPE.est, names_from = model) %>%
-  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , 
-                   grid_rows = "struczero",
-                   steps_y_base = 0.75, steps_y_height = 0.05, 
-                   steps_names = "Residual variance",
-                   x_name = "Sample size", y_name = "Averaged relative RMSPE",
-                   spu_x_shift = 1.5,
-                   colors = ggcols[-1],
-                   steps_values_annotate = TRUE, steps_annotation_size = 2.5,
-                   hline_intercept = 1,
-                   y_expand_add = c(0.5, 0.25),
-                   post_processing = list(
-                       add_custom_theme = list(
-                         text=element_text(size = 14),
-                           axis.text.x = element_text(size = 14,
-                                                      angle = -90,
-                                                      vjust = 0.5),
-                         legend.position="top")
-                   )) 
-```
-
-```{r}
-#| fig-cap: "Population A with a linearly decreasing proportion of zero-inflation of starting from 75%"
-tbl_perf %>%
-  dplyr::select(population, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, relRMSPE.est) %>%
-  filter(population %in% "A" & propzi == 0.75 & revzi == FALSE & model != "oracle") %>%
-  mutate(n = to_factor(n)) %>%
-  arrange(model, penalty) %>%
+  arrange(model) %>%
   pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = relRMSPE.est, names_from = model) %>%
   nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "struczero",
                    steps_y_base = 0.5, steps_y_height = 0.1, 
-                   steps_names = "Residual variance",
+                   steps_names = "Target R\U00B2",
                    x_name = "Sample size", y_name = "Averaged relative RMSPE",
                    spu_x_shift = 1.5,
                    colors = ggcols[-1],
@@ -278,17 +158,17 @@ tbl_perf %>%
 ```
 
 ```{r}
-#| fig-cap: "Population A with a linearly decreasing proportion of zero-inflation of starting from 25%"
+#| fig-cap: "OGM A with a linearly decreasing proportion of zero-inflation of starting from 25%"
 tbl_perf %>%
-  dplyr::select(population, UDdepen, n, epslvl, propzi, struczero, revzi, model,
-                penalty, relRMSPE.est) %>%
-  filter(population %in% "A" & propzi == 0.25 & revzi == FALSE & model != "oracle") %>%
+  dplyr::select(OGM, UDdepen, n, epslvl, propzi, struczero, revzi, model,
+                 relRMSPE.est) %>%
+  filter(OGM %in% "A" & propzi == 0.25 & revzi == FALSE & model != "oracle-OLS") %>%
   mutate(n = to_factor(n)) %>%
-  arrange(model, penalty) %>%
+  arrange(model) %>%
   pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = relRMSPE.est, names_from = model) %>%
   nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "struczero",
                    steps_y_base = 0.5, steps_y_height = 0.1, 
-                   steps_names = "Residual variance",
+                   steps_names = "Target R\U00B2",
                    x_name = "Sample size", y_name = "Averaged relative RMSPE",
                    spu_x_shift = 1.5,
                    colors = ggcols[-1],
@@ -305,73 +185,47 @@ tbl_perf %>%
                    )) 
 ```
 
+```{r}
+#| fig-cap: "OGM A with moderate residual variance (target R2 = 0.6) across total zero-inflation levels"
+tbl_perf %>%
+  dplyr::select(OGM, UDdepen, n, epslvl, propzi, struczero, revzi, model,
+                 relRMSPE.est) %>%
+  filter(OGM %in% "A" & epslvl=="moderate" & revzi == FALSE & model != "oracle-OLS") %>%
+  mutate(n = to_factor(n)) %>%
+  arrange(model) %>%
+  pivot_wider(id_cols = c(UDdepen, n, propzi, struczero), values_from = relRMSPE.est, names_from = model) %>%
+  nested_loop_plot(x = "n", steps = "propzi", grid_cols ="UDdepen" , grid_rows = "struczero",
+                   steps_y_base = 0.95, steps_y_height = 0.01, 
+                   steps_names = "Proportion of zero-inflation",
+                   x_name = "Sample size", y_name = "Averaged relative RMSPE",
+                   spu_x_shift = 1.5,
+                   colors = ggcols[-1],
+                   steps_values_annotate = TRUE, steps_annotation_size = 2.5,
+                   hline_intercept = 1,
+                   y_expand_add = c(0.1, 0.05),
+                   post_processing = list(
+                       add_custom_theme = list(
+                         text=element_text(size = 14),
+                           axis.text.x = element_text(size = 14,
+                                                      angle = -90,
+                                                      vjust = 0.5),
+                         legend.position="top")
+                   )) 
+```
+
 ## Calibration
 
 ```{r}
-#| fig-cap: "Population A with a linearly increasing proportion of zero-inflation of up to 75%"
+#| fig-cap: "OGM A with a linearly decreasing proportion of zero-inflation of starting from 75%"
 tbl_perf %>%
-  dplyr::select(population, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, CS.est) %>%
-  filter(population %in% "A" & propzi == 0.75 & revzi == TRUE) %>%
+  dplyr::select(OGM,  UDdepen, n, epslvl, propzi, struczero, revzi, model,  CS.est) %>%
+  filter(OGM %in% "C"  & propzi == 0.75 & revzi == FALSE) %>%
   mutate(n = to_factor(n)) %>%
-  arrange(model, penalty) %>%
-  pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = CS.est, names_from = model) %>%
-  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "struczero",
-                   steps_y_base = -0.1, steps_y_height = 0.05, 
-                   steps_names = "Residual variance",
-                   x_name = "Sample size", y_name = "Averaged CS",
-                   spu_x_shift = 1.5,
-                   colors = ggcols,
-                   steps_values_annotate = TRUE, steps_annotation_size = 2.5,
-                   hline_intercept = 1,
-                   y_expand_add = c(0.5, 0.15),
-                   post_processing = list(
-                       add_custom_theme = list(
-                         text=element_text(size = 14),
-                           axis.text.x = element_text(size = 14,
-                                                      angle = -90,
-                                                      vjust = 0.5),
-                         legend.position="top")
-                   )) 
-```
-
-```{r}
-#| fig-cap: "Population A with a linearly increasing proportion of zero-inflation of up to 25%"
-tbl_perf %>%
-  dplyr::select(population,  UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, CS.est) %>%
-  filter(population %in% "A" & propzi == 0.25 & revzi == TRUE) %>%
-  mutate(n = to_factor(n)) %>%
-  arrange(model, penalty) %>%
-  pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = CS.est, names_from = model) %>%
-  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "struczero",
-                   steps_y_base = 0.25, steps_y_height = 0.05, 
-                   steps_names = "Residual variance",
-                   x_name = "Sample size", y_name = "Averaged CS",
-                   spu_x_shift = 1.5,
-                   colors = ggcols,
-                   steps_values_annotate = TRUE, steps_annotation_size = 2.5,
-                   hline_intercept = 1,
-                   y_expand_add = c(0.25, 0.25),
-                   post_processing = list(
-                       add_custom_theme = list(
-                         text=element_text(size = 14),
-                           axis.text.x = element_text(size = 14,
-                                                      angle = -90,
-                                                      vjust = 0.5),
-                         legend.position="top")
-                   )) 
-```
-
-```{r}
-#| fig-cap: "Population A with a linearly decreasing proportion of zero-inflation of starting from 75%"
-tbl_perf %>%
-  dplyr::select(population,  UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, CS.est) %>%
-  filter(population %in% "C"  & propzi == 0.75 & revzi == FALSE) %>%
-  mutate(n = to_factor(n)) %>%
-  arrange(model, penalty) %>%
+  arrange(model) %>%
   pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = CS.est, names_from = model) %>%
   nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "struczero",
                    steps_y_base = 0.0, steps_y_height = 0.05, 
-                   steps_names = "Residual variance",
+                   steps_names = "Target R\U00B2",
                    x_name = "Sample size", y_name = "Averaged CS",
                    spu_x_shift = 1.5,
                    colors = ggcols,
@@ -389,16 +243,16 @@ tbl_perf %>%
 ```
 
 ```{r}
-#| fig-cap: "Population A with a linearly decreasing proportion of zero-inflation of starting from 25%"
+#| fig-cap: "OGM A with a linearly decreasing proportion of zero-inflation of starting from 25%"
 tbl_perf %>%
-  dplyr::select(population, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, CS.est) %>%
-  filter(population %in% "A" & propzi == 0.25 & revzi == FALSE) %>%
+  dplyr::select(OGM, UDdepen, n, epslvl, propzi, struczero, revzi, model,  CS.est) %>%
+  filter(OGM %in% "A" & propzi == 0.25 & revzi == FALSE) %>%
   mutate(n = to_factor(n)) %>%
-  arrange(model, penalty) %>%
+  arrange(model) %>%
   pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = CS.est, names_from = model) %>%
   nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "struczero",
                    steps_y_base = 0.25, steps_y_height = 0.05, 
-                   steps_names = "Residual variance",
+                   steps_names = "Target R\U00B2",
                    x_name = "Sample size", y_name = "Averaged CS",
                    spu_x_shift = 1.5,
                    colors = ggcols,
@@ -418,16 +272,16 @@ tbl_perf %>%
 ## R2
 
 ```{r}
-#| fig-cap: "Population A with a linearly increasing proportion of zero-inflation of up to 75%"
+#| fig-cap: "OGM A with a linearly decreasing proportion of zero-inflation of starting from 75%"
 tbl_perf %>%
-  dplyr::select(population, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, R2.est) %>%
-  filter(population %in% "A" & propzi == 0.75 & revzi == TRUE ) %>%
+  dplyr::select(OGM, UDdepen, n, epslvl, propzi, struczero, revzi, model,  R2.est) %>%
+  filter(OGM %in% "A" & propzi == 0.75 & revzi == FALSE) %>%
   mutate(n = to_factor(n)) %>%
-  arrange(model, penalty) %>%
+  arrange(model) %>%
   pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = R2.est, names_from = model) %>%
   nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "struczero",
                    steps_y_base = -0.15, steps_y_height = 0.05, 
-                   steps_names = "Residual variance",
+                   steps_names = "Target R\U00B2",
                    x_name = "Sample size", y_name = "Averaged R2",
                    spu_x_shift = 1.5,
                    colors = ggcols,
@@ -445,70 +299,16 @@ tbl_perf %>%
 ```
 
 ```{r}
-#| fig-cap: "Population A with a linearly increasing proportion of zero-inflation of up to 25%"
+#| fig-cap: "OGM A with a linearly decreasing proportion of zero-inflation of starting from 25%"
 tbl_perf %>%
-  dplyr::select(population, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, R2.est) %>%
-  filter(population %in% "A" & propzi == 0.25 & revzi == TRUE) %>%
+  dplyr::select(OGM, UDdepen, n, epslvl, propzi, struczero, revzi, model,  R2.est) %>%
+  filter(OGM %in% "A" & propzi == 0.25 & revzi == FALSE) %>%
   mutate(n = to_factor(n)) %>%
-  arrange(model, penalty) %>%
+  arrange(model) %>%
   pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = R2.est, names_from = model) %>%
   nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "struczero",
                    steps_y_base = -0.15, steps_y_height = 0.05, 
-                   steps_names = "Residual variance",
-                   x_name = "Sample size", y_name = "Averaged R2",
-                   spu_x_shift = 1.5,
-                   colors = ggcols,
-                   steps_values_annotate = TRUE, steps_annotation_size = 2.5,
-                   hline_intercept = 0,
-                   y_expand_add = c(0.15, 0.15),
-                   post_processing = list(
-                       add_custom_theme = list(
-                         text=element_text(size = 14),
-                           axis.text.x = element_text(size = 14,
-                                                      angle = -90,
-                                                      vjust = 0.5),
-                         legend.position="top")
-                   )) 
-```
-
-```{r}
-#| fig-cap: "Population A with a linearly decreasing proportion of zero-inflation of starting from 75%"
-tbl_perf %>%
-  dplyr::select(population, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, R2.est) %>%
-  filter(population %in% "A" & propzi == 0.75 & revzi == FALSE) %>%
-  mutate(n = to_factor(n)) %>%
-  arrange(model, penalty) %>%
-  pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = R2.est, names_from = model) %>%
-  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "struczero",
-                   steps_y_base = -0.15, steps_y_height = 0.05, 
-                   steps_names = "Residual variance",
-                   x_name = "Sample size", y_name = "Averaged R2",
-                   spu_x_shift = 1.5,
-                   colors = ggcols,
-                   steps_values_annotate = TRUE, steps_annotation_size = 2.5,
-                   hline_intercept = 0,
-                   y_expand_add = c(0.15, 0.15),
-                   post_processing = list(
-                       add_custom_theme = list(
-                         text=element_text(size = 14),
-                           axis.text.x = element_text(size = 14,
-                                                      angle = -90,
-                                                      vjust = 0.5),
-                         legend.position="top")
-                   )) 
-```
-
-```{r}
-#| fig-cap: "Population A with a linearly decreasing proportion of zero-inflation of starting from 25%"
-tbl_perf %>%
-  dplyr::select(population, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, R2.est) %>%
-  filter(population %in% "A" & propzi == 0.25 & revzi == FALSE) %>%
-  mutate(n = to_factor(n)) %>%
-  arrange(model, penalty) %>%
-  pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = R2.est, names_from = model) %>%
-  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "struczero",
-                   steps_y_base = -0.15, steps_y_height = 0.05, 
-                   steps_names = "Residual variance",
+                   steps_names = "Target R\U00B2",
                    x_name = "Sample size", y_name = "Averaged R2",
                    spu_x_shift = 1.5,
                    colors = ggcols,
@@ -530,16 +330,16 @@ tbl_perf %>%
 ### Variable inclusion
 
 ```{r}
-#| fig-cap: "Population A with a linearly increasing proportion of zero-inflation of up to 75%"
+#| fig-cap: "OGM A with a denearly increasing proportion of zero-inflation starting with 75%"
 tbl_perf %>%
-  dplyr::select(population, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, npeps.est) %>%
-  filter(population %in% "A" & propzi == 0.75 & revzi == TRUE ) %>%
+  dplyr::select(OGM, UDdepen, n, epslvl, propzi, struczero, revzi, model,  npeps.est) %>%
+  filter(OGM %in% "A" & propzi == 0.75 & revzi == FALSE) %>%
   mutate(n = to_factor(n)) %>%
-  arrange(model, penalty) %>%
+  arrange(model) %>%
   pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = npeps.est, names_from = model) %>%
   nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "struczero",
                    steps_y_base = -25, steps_y_height = 5, 
-                   steps_names = "Residual variance",
+                   steps_names = "Target R\U00B2",
                    x_name = "Sample size", y_name = "Averaged number of incuded peptides",
                    spu_x_shift = 1.5,
                    colors = ggcols,
@@ -557,16 +357,16 @@ tbl_perf %>%
 ```
 
 ```{r}
-#| fig-cap: "Population A with a linearly increasing proportion of zero-inflation of up to 25%"
+#| fig-cap: "OGM A with a denearly increasing proportion of zero-inflation starting with 25%"
 tbl_perf %>%
-  dplyr::select(population, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, npeps.est) %>%
-  filter(population %in% "C"  & propzi == 0.25 & revzi == TRUE ) %>%
+  dplyr::select(OGM, UDdepen, n, epslvl, propzi, struczero, revzi, model,  npeps.est) %>%
+  filter(OGM %in% "A" & propzi == 0.25 & revzi == FALSE ) %>%
   mutate(n = to_factor(n)) %>%
-  arrange(model, penalty) %>%
+  arrange(model) %>%
   pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = npeps.est, names_from = model) %>%
   nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "struczero",
                    steps_y_base = -25, steps_y_height = 5, 
-                   steps_names = "Residual variance",
+                   steps_names = "Target R\U00B2",
                    x_name = "Sample size", y_name = "Averaged number of incuded peptides",
                    spu_x_shift = 1.5,
                    colors = ggcols,
@@ -584,49 +384,23 @@ tbl_perf %>%
 ```
 
 ```{r}
-#| fig-cap: "Population A with a denearly increasing proportion of zero-inflation starting with 75%"
+#| fig-cap: "OGM A with moderate residual variance (target R2 = 0.6) across total zero-inflation levels"
 tbl_perf %>%
-  dplyr::select(population, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, npeps.est) %>%
-  filter(population %in% "A" & propzi == 0.75 & revzi == FALSE) %>%
+  dplyr::select(OGM, UDdepen, n, epslvl, propzi, struczero, revzi, model,
+                 npeps.est) %>%
+  filter(OGM %in% "A" & epslvl=="moderate" & revzi == FALSE & model != "oracle-OLS") %>%
   mutate(n = to_factor(n)) %>%
-  arrange(model, penalty) %>%
-  pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = npeps.est, names_from = model) %>%
-  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "struczero",
-                   steps_y_base = -25, steps_y_height = 5, 
-                   steps_names = "Residual variance",
+  arrange(model) %>%
+  pivot_wider(id_cols = c(UDdepen, n, propzi, struczero), values_from = npeps.est, names_from = model) %>%
+  nested_loop_plot(x = "n", steps = "propzi", grid_cols ="UDdepen" , grid_rows = "struczero",
+                   steps_y_base = 0, steps_y_height = 0.01, 
+                   steps_names = "Proportion of zero-inflation",
                    x_name = "Sample size", y_name = "Averaged number of incuded peptides",
                    spu_x_shift = 1.5,
-                   colors = ggcols,
+                   colors = ggcols[-1],
                    steps_values_annotate = TRUE, steps_annotation_size = 2.5,
-                   hline_intercept = 0,
-                   y_expand_add = c(50, 15),
-                   post_processing = list(
-                       add_custom_theme = list(
-                         text=element_text(size = 14),
-                           axis.text.x = element_text(size = 14,
-                                                      angle = -90,
-                                                      vjust = 0.5),
-                         legend.position="top")
-                   )) 
-```
-
-```{r}
-#| fig-cap: "Population A with a denearly increasing proportion of zero-inflation starting with 25%"
-tbl_perf %>%
-  dplyr::select(population, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, npeps.est) %>%
-  filter(population %in% "A" & propzi == 0.25 & revzi == FALSE ) %>%
-  mutate(n = to_factor(n)) %>%
-  arrange(model, penalty) %>%
-  pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = npeps.est, names_from = model) %>%
-  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "struczero",
-                   steps_y_base = -25, steps_y_height = 5, 
-                   steps_names = "Residual variance",
-                   x_name = "Sample size", y_name = "Averaged number of incuded peptides",
-                   spu_x_shift = 1.5,
-                   colors = ggcols,
-                   steps_values_annotate = TRUE, steps_annotation_size = 2.5,
-                   hline_intercept = 0,
-                   y_expand_add = c(50, 15),
+                   hline_intercept = 1,
+                   y_expand_add = c(10, 5),
                    post_processing = list(
                        add_custom_theme = list(
                          text=element_text(size = 14),
@@ -643,16 +417,16 @@ tbl_perf %>%
 #### TPDR
 
 ```{r}
-#| fig-cap: "Population A with a denearly increasing proportion of zero-inflation starting with 75%"
+#| fig-cap: "OGM A with a denearly increasing proportion of zero-inflation starting with 75%"
 tbl_allsel %>%
-  dplyr::select(population, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, TPDR) %>%
-  filter(population %in% "A" & propzi == 0.75 & revzi == TRUE) %>%
+  dplyr::select(OGM, UDdepen, n, epslvl, propzi, struczero, revzi, model,  TPDR) %>%
+  filter(OGM %in% "A" & propzi == 0.75 & revzi == FALSE) %>%
   mutate(n = to_factor(n)) %>%
-  arrange(model, penalty) %>%
+  arrange(model) %>%
   pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = TPDR, names_from = model) %>%
   nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "struczero",
                    steps_y_base = -0.1, steps_y_height = 0.025, 
-                   steps_names = "Residual variance",
+                   steps_names = "Target R\U00B2",
                    x_name = "Sample size", y_name = "True-postive discovery rate",
                    spu_x_shift = 1.5,
                    colors = ggcols,
@@ -672,16 +446,16 @@ tbl_allsel %>%
 #### TNDR
 
 ```{r}
-#| fig-cap: "Population A with a denearly increasing proportion of zero-inflation starting with 75%"
+#| fig-cap: "OGM A with a denearly increasing proportion of zero-inflation starting with 75%"
 tbl_allsel %>%
-  dplyr::select(population, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, TNDR) %>%
-  filter(population %in% "A" & propzi == 0.75 & revzi == TRUE ) %>%
+  dplyr::select(OGM, UDdepen, n, epslvl, propzi, struczero, revzi, model,  TNDR) %>%
+  filter(OGM %in% "A" & propzi == 0.75 & revzi == FALSE ) %>%
   mutate(n = to_factor(n)) %>%
-  arrange(model, penalty) %>%
+  arrange(model) %>%
   pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = TNDR, names_from = model) %>%
   nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "struczero",
                    steps_y_base = -0.1, steps_y_height = 0.025, 
-                   steps_names = "Residual variance",
+                   steps_names = "Target R\U00B2",
                    x_name = "Sample size", y_name = "True-postive discovery rate",
                    spu_x_shift = 1.5,
                    colors = ggcols,
@@ -701,16 +475,16 @@ tbl_allsel %>%
 #### FPDR
 
 ```{r}
-#| fig-cap: "Population A with a denearly increasing proportion of zero-inflation starting with 75%"
+#| fig-cap: "OGM A with a denearly increasing proportion of zero-inflation starting with 75%"
 tbl_allsel %>%
-  dplyr::select(population, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, FPDR) %>%
-  filter(population %in% "A" & propzi == 0.75 & revzi == TRUE ) %>%
+  dplyr::select(OGM, UDdepen, n, epslvl, propzi, struczero, revzi, model,  FPDR) %>%
+  filter(OGM %in% "A" & propzi == 0.75 & revzi == FALSE ) %>%
   mutate(n = to_factor(n)) %>%
-  arrange(model, penalty) %>%
+  arrange(model) %>%
   pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = FPDR, names_from = model) %>%
   nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "struczero",
                    steps_y_base = -0.1, steps_y_height = 0.025, 
-                   steps_names = "Residual variance",
+                   steps_names = "Target R\U00B2",
                    x_name = "Sample size", y_name = "True-postive discovery rate",
                    spu_x_shift = 1.5,
                    colors = ggcols,
@@ -730,16 +504,16 @@ tbl_allsel %>%
 #### FNDR
 
 ```{r}
-#| fig-cap: "Population A with a denearly increasing proportion of zero-inflation starting with 75%"
+#| fig-cap: "OGM A with a denearly increasing proportion of zero-inflation starting with 75%"
 tbl_allsel %>%
-  dplyr::select(population, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, FNDR) %>%
-  filter(population %in% "A" & propzi == 0.75 & revzi == TRUE) %>%
+  dplyr::select(OGM, UDdepen, n, epslvl, propzi, struczero, revzi, model,  FNDR) %>%
+  filter(OGM %in% "A" & propzi == 0.75 & revzi == FALSE) %>%
   mutate(n = to_factor(n)) %>%
-  arrange(model, penalty) %>%
+  arrange(model) %>%
   pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = FNDR, names_from = model) %>%
   nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "struczero",
                    steps_y_base = -0.1, steps_y_height = 0.025, 
-                   steps_names = "Residual variance",
+                   steps_names = "Target R\U00B2",
                    x_name = "Sample size", y_name = "False-negative discovery rate",
                    spu_x_shift = 1.5,
                    colors = ggcols,
@@ -762,19 +536,19 @@ tbl_allsel %>%
 ## RMSPE
 
 ```{r}
-#| fig-cap: "population B with a linearly increasing proportion of zero-inflation of up to 75%"
+#| fig-cap: "OGM B with a linearly increasing proportion of zero-inflation of up to 75%"
 tbl_perf %>%
-  dplyr::select(population, UDdepen, n, epslvl, propzi, struczero, model, penalty, RMSPE.est) %>%
-  filter(population %in% "B" & propzi == 0.75 & model != "oracle") %>%
+  dplyr::select(OGM, UDdepen, n, epslvl, propzi, struczero, model,  RMSPE.est) %>%
+  filter(OGM %in% "B" & propzi == 0.75 & model != "oracle-OLS") %>%
   mutate(n = to_factor(n)) %>%
   mutate(RMSPE.est = ifelse(UDdepen == "U", RMSPE.est/10, RMSPE.est)) %>%
-  arrange(model, penalty) %>%
+  arrange(model) %>%
   pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), 
               values_from = RMSPE.est, names_from = model) %>%
   nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" ,
                    grid_rows = "struczero",
                    steps_y_base = -0.5, steps_y_height = 0.1, 
-                   steps_names = "Residual variance",
+                   steps_names = "Target R\U00B2",
                    x_name = "Sample size", y_name = "Averaged RMSPE",
                    spu_x_shift = 1.5,
                    grid_scales="free_y",
@@ -794,19 +568,19 @@ tbl_perf %>%
 ```
 
 ```{r}
-#| fig-cap: "population B with a linearly increasing proportion of zero-inflation of up to 25%"
+#| fig-cap: "OGM B with a linearly increasing proportion of zero-inflation of up to 25%"
 tbl_perf %>%
-  dplyr::select(population, UDdepen, n, epslvl, propzi, struczero, model, penalty, RMSPE.est) %>%
-  filter(population %in% "B" & propzi == 0.25 & model != "oracle" ) %>%
+  dplyr::select(OGM, UDdepen, n, epslvl, propzi, struczero, model,  RMSPE.est) %>%
+  filter(OGM %in% "B" & propzi == 0.25 & model != "oracle-OLS" ) %>%
   mutate(n = to_factor(n),
          RMSPE.est = ifelse(UDdepen == "U", RMSPE.est/10, RMSPE.est)) %>%
-  arrange(model, penalty) %>%
+  arrange(model) %>%
   pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), 
               values_from = RMSPE.est, names_from = model) %>%
   nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , 
                    grid_rows = "struczero",
                    steps_y_base = -1, steps_y_height = 0.15, 
-                   steps_names = "Residual variance",
+                   steps_names = "Target R\U00B2",
                    x_name = "Sample size", y_name = "Averaged RMSPE",
                    spu_x_shift = 1.5,
                    grid_scales="free_y",
@@ -824,22 +598,20 @@ tbl_perf %>%
                    )) 
 ```
 
-
-
 ## Relative RMSPE
 
 ```{r}
-#| fig-cap: "population B with a linearly increasing proportion of zero-inflation of up to 75%"
+#| fig-cap: "OGM B with a linearly increasing proportion of zero-inflation of up to 75%"
 tbl_perf %>%
-  dplyr::select(population, UDdepen, n, epslvl, propzi, struczero, model, penalty, relRMSPE.est) %>%
-  filter(population %in% "B"  & propzi == 0.75 & model != "oracle") %>%
+  dplyr::select(OGM, UDdepen, n, epslvl, propzi, struczero, model,  relRMSPE.est) %>%
+  filter(OGM %in% "B"  & propzi == 0.75 & model != "oracle-OLS") %>%
   mutate(n = to_factor(n)) %>%
-  arrange(model, penalty) %>%
+  arrange(model) %>%
   pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = relRMSPE.est, names_from = model) %>%
   nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , 
                    grid_rows = "struczero",
                    steps_y_base = 0.5, steps_y_height = 0.05, 
-                   steps_names = "Residual variance",
+                   steps_names = "Target R\U00B2",
                    x_name = "Sample size", y_name = "Averaged relative RMSPE",
                    spu_x_shift = 1.5,
                    colors = ggcols[-1],
@@ -857,17 +629,17 @@ tbl_perf %>%
 ```
 
 ```{r}
-#| fig-cap: "population B with a linearly increasing proportion of zero-inflation of up tp 25%"
+#| fig-cap: "OGM B with a linearly increasing proportion of zero-inflation of up tp 25%"
 tbl_perf %>%
-  dplyr::select(population, UDdepen, n, epslvl, propzi, struczero, model, penalty, relRMSPE.est) %>%
-  filter(population %in% "B" & propzi == 0.25 &  model != "oracle") %>%
+  dplyr::select(OGM, UDdepen, n, epslvl, propzi, struczero, model,  relRMSPE.est) %>%
+  filter(OGM %in% "B" & propzi == 0.25 &  model != "oracle-OLS") %>%
   mutate(n = to_factor(n)) %>%
-  arrange(model, penalty) %>%
+  arrange(model) %>%
   pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = relRMSPE.est, names_from = model) %>%
   nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , 
                    grid_rows = "struczero",
                    steps_y_base = 0.75, steps_y_height = 0.05, 
-                   steps_names = "Residual variance",
+                   steps_names = "Target R\U00B2",
                    x_name = "Sample size", y_name = "Averaged relative RMSPE",
                    spu_x_shift = 1.5,
                    colors = ggcols[-1],
@@ -887,16 +659,16 @@ tbl_perf %>%
 ## Calibration
 
 ```{r}
-#| fig-cap: "population B with a linearly increasing proportion of zero-inflation of up to 75%"
+#| fig-cap: "OGM B with a linearly increasing proportion of zero-inflation of up to 75%"
 tbl_perf %>%
-  dplyr::select(population, UDdepen, n, epslvl, propzi, struczero, model, penalty, CS.est) %>%
-  filter(population %in% "B" & propzi == 0.75 ) %>%
+  dplyr::select(OGM, UDdepen, n, epslvl, propzi, struczero, model,  CS.est) %>%
+  filter(OGM %in% "B" & propzi == 0.75 ) %>%
   mutate(n = to_factor(n)) %>%
-  arrange(model, penalty) %>%
+  arrange(model) %>%
   pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = CS.est, names_from = model) %>%
   nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "struczero",
                    steps_y_base = -0.1, steps_y_height = 0.05, 
-                   steps_names = "Residual variance",
+                   steps_names = "Target R\U00B2",
                    x_name = "Sample size", y_name = "Averaged CS",
                    spu_x_shift = 1.5,
                    colors = ggcols,
@@ -914,16 +686,16 @@ tbl_perf %>%
 ```
 
 ```{r}
-#| fig-cap: "population B with a linearly increasing proportion of zero-inflation of up to 25%"
+#| fig-cap: "OGM B with a linearly increasing proportion of zero-inflation of up to 25%"
 tbl_perf %>%
-  dplyr::select(population,  UDdepen, n, epslvl, propzi, struczero, model, penalty, CS.est) %>%
-  filter(population %in% "B" & propzi == 0.25 ) %>%
+  dplyr::select(OGM,  UDdepen, n, epslvl, propzi, struczero, model,  CS.est) %>%
+  filter(OGM %in% "B" & propzi == 0.25 ) %>%
   mutate(n = to_factor(n)) %>%
-  arrange(model, penalty) %>%
+  arrange(model) %>%
   pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = CS.est, names_from = model) %>%
   nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "struczero",
                    steps_y_base = 0.25, steps_y_height = 0.05, 
-                   steps_names = "Residual variance",
+                   steps_names = "Target R\U00B2",
                    x_name = "Sample size", y_name = "Averaged CS",
                    spu_x_shift = 1.5,
                    colors = ggcols,
@@ -940,20 +712,19 @@ tbl_perf %>%
                    )) 
 ```
 
-
 ## R2
 
 ```{r}
-#| fig-cap: "population B with a linearly increasing proportion of zero-inflation of up to 75%"
+#| fig-cap: "OGM B with a linearly increasing proportion of zero-inflation of up to 75%"
 tbl_perf %>%
-  dplyr::select(population, UDdepen, n, epslvl, propzi, struczero,  model, penalty, R2.est) %>%
-  filter(population %in% "B" & propzi == 0.75 ) %>%
+  dplyr::select(OGM, UDdepen, n, epslvl, propzi, struczero,  model,  R2.est) %>%
+  filter(OGM %in% "B" & propzi == 0.75 ) %>%
   mutate(n = to_factor(n)) %>%
-  arrange(model, penalty) %>%
+  arrange(model) %>%
   pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = R2.est, names_from = model) %>%
   nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "struczero",
                    steps_y_base = -0.15, steps_y_height = 0.05, 
-                   steps_names = "Residual variance",
+                   steps_names = "Target R\U00B2",
                    x_name = "Sample size", y_name = "Averaged R2",
                    spu_x_shift = 1.5,
                    colors = ggcols,
@@ -971,16 +742,16 @@ tbl_perf %>%
 ```
 
 ```{r}
-#| fig-cap: "population B with a linearly increasing proportion of zero-inflation of up to 25%"
+#| fig-cap: "OGM B with a linearly increasing proportion of zero-inflation of up to 25%"
 tbl_perf %>%
-  dplyr::select(population, UDdepen, n, epslvl, propzi, struczero, model, penalty, R2.est) %>%
-  filter(population %in% "B" & propzi == 0.25 ) %>%
+  dplyr::select(OGM, UDdepen, n, epslvl, propzi, struczero, model,  R2.est) %>%
+  filter(OGM %in% "B" & propzi == 0.25 ) %>%
   mutate(n = to_factor(n)) %>%
-  arrange(model, penalty) %>%
+  arrange(model) %>%
   pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = R2.est, names_from = model) %>%
   nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "struczero",
                    steps_y_base = -0.15, steps_y_height = 0.05, 
-                   steps_names = "Residual variance",
+                   steps_names = "Target R\U00B2",
                    x_name = "Sample size", y_name = "Averaged R2",
                    spu_x_shift = 1.5,
                    colors = ggcols,
@@ -996,27 +767,25 @@ tbl_perf %>%
                          legend.position="top")
                    )) 
 ```
-
-
 
 ## Variable selection
 
 ### Variable inclusion
 
 ```{r}
-#| fig-cap: "population B with a linearly increasing proportion of zero-inflation of up to 75%"
+#| fig-cap: "OGM B with a linearly increasing proportion of zero-inflation of up to 75%"
 tbl_perf %>%
-  dplyr::select(population, UDdepen, n, epslvl, propzi, struczero,  model, penalty, npeps.est) %>%
-  filter(population %in% "B" & propzi == 0.75 ) %>%
+  dplyr::select(OGM, UDdepen, n, epslvl, propzi, struczero,  model,  npeps.est) %>%
+  filter(OGM %in% "B" & propzi == 0.75 & model != "oracle-OLS" ) %>%
   mutate(n = to_factor(n)) %>%
-  arrange(model, penalty) %>%
+  arrange(model) %>%
   pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = npeps.est, names_from = model) %>%
   nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "struczero",
                    steps_y_base = -25, steps_y_height = 5, 
-                   steps_names = "Residual variance",
+                   steps_names = "Target R\U00B2",
                    x_name = "Sample size", y_name = "Averaged number of incuded peptides",
                    spu_x_shift = 1.5,
-                   colors = ggcols,
+                   colors = ggcols[-1],
                    steps_values_annotate = TRUE, steps_annotation_size = 2.5,
                    hline_intercept = 0,
                    y_expand_add = c(50, 15),
@@ -1031,16 +800,16 @@ tbl_perf %>%
 ```
 
 ```{r}
-#| fig-cap: "population B with a linearly increasing proportion of zero-inflation of up to 25%"
+#| fig-cap: "OGM B with a linearly increasing proportion of zero-inflation of up to 25%"
 tbl_perf %>%
-  dplyr::select(population, UDdepen, n, epslvl, propzi, struczero,  model, penalty, npeps.est) %>%
-  filter(population %in% "B"  & propzi == 0.25  ) %>%
+  dplyr::select(OGM, UDdepen, n, epslvl, propzi, struczero,  model,  npeps.est) %>%
+  filter(OGM %in% "B"  & propzi == 0.25  ) %>%
   mutate(n = to_factor(n)) %>%
-  arrange(model, penalty) %>%
+  arrange(model) %>%
   pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = npeps.est, names_from = model) %>%
   nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "struczero",
                    steps_y_base = -25, steps_y_height = 5, 
-                   steps_names = "Residual variance",
+                   steps_names = "Target R\U00B2",
                    x_name = "Sample size", y_name = "Averaged number of incuded peptides",
                    spu_x_shift = 1.5,
                    colors = ggcols,
@@ -1056,7 +825,6 @@ tbl_perf %>%
                          legend.position="top")
                    )) 
 ```
-
 
 ### Discovery rates
 
@@ -1064,16 +832,16 @@ tbl_perf %>%
 #### TPDR
 
 ```{r}
-#| fig-cap: "population B with a denearly increasing proportion of zero-inflation starting with 75%"
+#| fig-cap: "OGM B with a denearly increasing proportion of zero-inflation starting with 75%"
 tbl_allsel %>%
-  dplyr::select(population, UDdepen, n, epslvl, propzi, struczero, model, penalty, TPDR) %>%
-  filter(population %in% "B" & propzi == 0.75 ) %>%
+  dplyr::select(OGM, UDdepen, n, epslvl, propzi, struczero, model,  TPDR) %>%
+  filter(OGM %in% "B" & propzi == 0.75 ) %>%
   mutate(n = to_factor(n)) %>%
-  arrange(model, penalty) %>%
+  arrange(model) %>%
   pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = TPDR, names_from = model) %>%
   nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "struczero",
                    steps_y_base = -0.1, steps_y_height = 0.025, 
-                   steps_names = "Residual variance",
+                   steps_names = "Target R\U00B2",
                    x_name = "Sample size", y_name = "True-postive discovery rate",
                    spu_x_shift = 1.5,
                    colors = ggcols,
@@ -1093,16 +861,16 @@ tbl_allsel %>%
 #### TNDR
 
 ```{r}
-#| fig-cap: "population B with a denearly increasing proportion of zero-inflation starting with 75%"
+#| fig-cap: "OGM B with a denearly increasing proportion of zero-inflation starting with 75%"
 tbl_allsel %>%
-  dplyr::select(population, UDdepen, n, epslvl, propzi, struczero,  model, penalty, TNDR) %>%
-  filter(population %in% "B" & propzi == 0.75 ) %>%
+  dplyr::select(OGM, UDdepen, n, epslvl, propzi, struczero,  model,  TNDR) %>%
+  filter(OGM %in% "B" & propzi == 0.75 ) %>%
   mutate(n = to_factor(n)) %>%
-  arrange(model, penalty) %>%
+  arrange(model) %>%
   pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = TNDR, names_from = model) %>%
   nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "struczero",
                    steps_y_base = -0.1, steps_y_height = 0.025, 
-                   steps_names = "Residual variance",
+                   steps_names = "Target R\U00B2",
                    x_name = "Sample size", y_name = "True-postive discovery rate",
                    spu_x_shift = 1.5,
                    colors = ggcols,
@@ -1122,16 +890,16 @@ tbl_allsel %>%
 #### FPDR
 
 ```{r}
-#| fig-cap: "population B with a denearly increasing proportion of zero-inflation starting with 75%"
+#| fig-cap: "OGM B with a denearly increasing proportion of zero-inflation starting with 75%"
 tbl_allsel %>%
-  dplyr::select(population, UDdepen, n, epslvl, propzi, struczero,  model, penalty, FPDR) %>%
-  filter(population %in% "B" & propzi == 0.75 ) %>%
+  dplyr::select(OGM, UDdepen, n, epslvl, propzi, struczero,  model,  FPDR) %>%
+  filter(OGM %in% "B" & propzi == 0.75 ) %>%
   mutate(n = to_factor(n)) %>%
-  arrange(model, penalty) %>%
+  arrange(model) %>%
   pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = FPDR, names_from = model) %>%
   nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "struczero",
                    steps_y_base = -0.1, steps_y_height = 0.025, 
-                   steps_names = "Residual variance",
+                   steps_names = "Target R\U00B2",
                    x_name = "Sample size", y_name = "True-postive discovery rate",
                    spu_x_shift = 1.5,
                    colors = ggcols,
@@ -1151,16 +919,16 @@ tbl_allsel %>%
 #### FNDR
 
 ```{r}
-#| fig-cap: "population B with a denearly increasing proportion of zero-inflation starting with 75%"
+#| fig-cap: "OGM B with a denearly increasing proportion of zero-inflation starting with 75%"
 tbl_allsel %>%
-  dplyr::select(population, UDdepen, n, epslvl, propzi, struczero,  model, penalty, FNDR) %>%
-  filter(population %in% "B" & propzi == 0.75 ) %>%
+  dplyr::select(OGM, UDdepen, n, epslvl, propzi, struczero,  model,  FNDR) %>%
+  filter(OGM %in% "B" & propzi == 0.75 ) %>%
   mutate(n = to_factor(n)) %>%
-  arrange(model, penalty) %>%
+  arrange(model) %>%
   pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = FNDR, names_from = model) %>%
   nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "struczero",
                    steps_y_base = -0.1, steps_y_height = 0.025, 
-                   steps_names = "Residual variance",
+                   steps_names = "Target R\U00B2",
                    x_name = "Sample size", y_name = "False-negative discovery rate",
                    spu_x_shift = 1.5,
                    colors = ggcols,
@@ -1178,25 +946,24 @@ tbl_allsel %>%
 ```
 :::
 
-
 # Scenario C
 
 ## RMSPE
 
 ```{r}
-#| fig-cap: "Population C with a linearly increasing proportion of zero-inflation of up to 75%"
+#| fig-cap: "OGM C with a linearly increasing proportion of zero-inflation of up to 75%"
 tbl_perf %>%
-  dplyr::select(population, UDdepen, n, epslvl, propzi, revzi, revzi, struczero, model, penalty, RMSPE.est) %>%
-  filter(population %in% "C" & propzi == 0.75 & model != "oracle" & revzi == TRUE) %>%
+  dplyr::select(OGM, UDdepen, n, epslvl, propzi, struczero, model,  RMSPE.est) %>%
+  filter(OGM %in% "C" & propzi == 0.75 & model != "oracle-OLS") %>%
   mutate(n = to_factor(n)) %>%
   mutate(RMSPE.est = ifelse(UDdepen == "U", RMSPE.est/10, RMSPE.est)) %>%
-  arrange(model, penalty) %>%
+  arrange(model) %>%
   pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), 
               values_from = RMSPE.est, names_from = model) %>%
   nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" ,
                    grid_rows = "struczero",
                    steps_y_base = -0.5, steps_y_height = 0.1, 
-                   steps_names = "Residual variance",
+                   steps_names = "Target R\U00B2",
                    x_name = "Sample size", y_name = "Averaged RMSPE",
                    spu_x_shift = 1.5,
                    grid_scales="free_y",
@@ -1216,19 +983,19 @@ tbl_perf %>%
 ```
 
 ```{r}
-#| fig-cap: "Population C with a linearly increasing proportion of zero-inflation of up to 25%"
+#| fig-cap: "OGM C with a linearly increasing proportion of zero-inflation of up to 25%"
 tbl_perf %>%
-  dplyr::select(population, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, RMSPE.est) %>%
-  filter(population %in% "C" & propzi == 0.25 & model != "oracle" & revzi == TRUE) %>%
+  dplyr::select(OGM, UDdepen, n, epslvl, propzi, struczero, model,  RMSPE.est) %>%
+  filter(OGM %in% "C" & propzi == 0.25 & model != "oracle-OLS") %>%
   mutate(n = to_factor(n),
          RMSPE.est = ifelse(UDdepen == "U", RMSPE.est/10, RMSPE.est)) %>%
-  arrange(model, penalty) %>%
+  arrange(model) %>%
   pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), 
               values_from = RMSPE.est, names_from = model) %>%
   nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , 
                    grid_rows = "struczero",
                    steps_y_base = -1, steps_y_height = 0.15, 
-                   steps_names = "Residual variance",
+                   steps_names = "Target R\U00B2",
                    x_name = "Sample size", y_name = "Averaged RMSPE",
                    spu_x_shift = 1.5,
                    grid_scales="free_y",
@@ -1246,22 +1013,20 @@ tbl_perf %>%
                    )) 
 ```
 
-
-
 ## Relative RMSPE
 
 ```{r}
-#| fig-cap: "Population C with a linearly increasing proportion of zero-inflation of up to 75%"
+#| fig-cap: "OGM C with a linearly increasing proportion of zero-inflation of up to 75%"
 tbl_perf %>%
-  dplyr::select(population, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, relRMSPE.est) %>%
-  filter(population %in% "C"  & propzi == 0.75 & model != "oracle" & revzi == TRUE) %>%
+  dplyr::select(OGM, UDdepen, n, epslvl, propzi, struczero, model,  relRMSPE.est) %>%
+  filter(OGM %in% "C"  & propzi == 0.75 & model != "oracle-OLS") %>%
   mutate(n = to_factor(n)) %>%
-  arrange(model, penalty) %>%
+  arrange(model) %>%
   pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = relRMSPE.est, names_from = model) %>%
   nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , 
                    grid_rows = "struczero",
                    steps_y_base = 0.5, steps_y_height = 0.05, 
-                   steps_names = "Residual variance",
+                   steps_names = "Target R\U00B2",
                    x_name = "Sample size", y_name = "Averaged relative RMSPE",
                    spu_x_shift = 1.5,
                    colors = ggcols[-1],
@@ -1279,17 +1044,17 @@ tbl_perf %>%
 ```
 
 ```{r}
-#| fig-cap: "Population C with a linearly increasing proportion of zero-inflation of up tp 25%"
+#| fig-cap: "OGM C with a linearly increasing proportion of zero-inflation of up tp 25%"
 tbl_perf %>%
-  dplyr::select(population, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, relRMSPE.est) %>%
-  filter(population %in% "C" & propzi == 0.25 &  model != "oracle" & revzi == TRUE) %>%
+  dplyr::select(OGM, UDdepen, n, epslvl, propzi, struczero, model,  relRMSPE.est) %>%
+  filter(OGM %in% "C" & propzi == 0.25 &  model != "oracle-OLS") %>%
   mutate(n = to_factor(n)) %>%
-  arrange(model, penalty) %>%
+  arrange(model) %>%
   pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = relRMSPE.est, names_from = model) %>%
   nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , 
                    grid_rows = "struczero",
                    steps_y_base = 0.75, steps_y_height = 0.05, 
-                   steps_names = "Residual variance",
+                   steps_names = "Target R\U00B2",
                    x_name = "Sample size", y_name = "Averaged relative RMSPE",
                    spu_x_shift = 1.5,
                    colors = ggcols[-1],
@@ -1309,16 +1074,16 @@ tbl_perf %>%
 ## Calibration
 
 ```{r}
-#| fig-cap: "Population C with a linearly increasing proportion of zero-inflation of up to 75%"
+#| fig-cap: "OGM C with a linearly increasing proportion of zero-inflation of up to 75%"
 tbl_perf %>%
-  dplyr::select(population, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, CS.est) %>%
-  filter(population %in% "C" & propzi == 0.75 & revzi == TRUE) %>%
+  dplyr::select(OGM, UDdepen, n, epslvl, propzi, struczero, model,  CS.est) %>%
+  filter(OGM %in% "C" & propzi == 0.75) %>%
   mutate(n = to_factor(n)) %>%
-  arrange(model, penalty) %>%
+  arrange(model) %>%
   pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = CS.est, names_from = model) %>%
   nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "struczero",
                    steps_y_base = -0.1, steps_y_height = 0.05, 
-                   steps_names = "Residual variance",
+                   steps_names = "Target R\U00B2",
                    x_name = "Sample size", y_name = "Averaged CS",
                    spu_x_shift = 1.5,
                    colors = ggcols,
@@ -1336,16 +1101,16 @@ tbl_perf %>%
 ```
 
 ```{r}
-#| fig-cap: "Population C with a linearly increasing proportion of zero-inflation of up to 25%"
+#| fig-cap: "OGM C with a linearly increasing proportion of zero-inflation of up to 25%"
 tbl_perf %>%
-  dplyr::select(population,  UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, CS.est) %>%
-  filter(population %in% "C" & propzi == 0.25 & revzi == TRUE) %>%
+  dplyr::select(OGM,  UDdepen, n, epslvl, propzi, struczero, model,  CS.est) %>%
+  filter(OGM %in% "C" & propzi == 0.25) %>%
   mutate(n = to_factor(n)) %>%
-  arrange(model, penalty) %>%
+  arrange(model) %>%
   pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = CS.est, names_from = model) %>%
   nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "struczero",
                    steps_y_base = 0.25, steps_y_height = 0.05, 
-                   steps_names = "Residual variance",
+                   steps_names = "Target R\U00B2",
                    x_name = "Sample size", y_name = "Averaged CS",
                    spu_x_shift = 1.5,
                    colors = ggcols,
@@ -1362,20 +1127,19 @@ tbl_perf %>%
                    )) 
 ```
 
-
 ## R2
 
 ```{r}
-#| fig-cap: "Population C with a linearly increasing proportion of zero-inflation of up to 75%"
+#| fig-cap: "OGM C with a linearly increasing proportion of zero-inflation of up to 75%"
 tbl_perf %>%
-  dplyr::select(population, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, R2.est) %>%
-  filter(population %in% "C" & propzi == 0.75 & revzi == TRUE) %>%
+  dplyr::select(OGM, UDdepen, n, epslvl, propzi, struczero, model,  R2.est) %>%
+  filter(OGM %in% "C" & propzi == 0.75) %>%
   mutate(n = to_factor(n)) %>%
-  arrange(model, penalty) %>%
+  arrange(model) %>%
   pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = R2.est, names_from = model) %>%
   nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "struczero",
                    steps_y_base = -0.15, steps_y_height = 0.05, 
-                   steps_names = "Residual variance",
+                   steps_names = "Target R\U00B2",
                    x_name = "Sample size", y_name = "Averaged R2",
                    spu_x_shift = 1.5,
                    colors = ggcols,
@@ -1393,16 +1157,16 @@ tbl_perf %>%
 ```
 
 ```{r}
-#| fig-cap: "Population C with a linearly increasing proportion of zero-inflation of up to 25%"
+#| fig-cap: "OGM C with a linearly increasing proportion of zero-inflation of up to 25%"
 tbl_perf %>%
-  dplyr::select(population, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, R2.est) %>%
-  filter(population %in% "C" & propzi == 0.25 & revzi == TRUE) %>%
+  dplyr::select(OGM, UDdepen, n, epslvl, propzi, struczero, model,  R2.est) %>%
+  filter(OGM %in% "C" & propzi == 0.25) %>%
   mutate(n = to_factor(n)) %>%
-  arrange(model, penalty) %>%
+  arrange(model) %>%
   pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = R2.est, names_from = model) %>%
   nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "struczero",
                    steps_y_base = -0.15, steps_y_height = 0.05, 
-                   steps_names = "Residual variance",
+                   steps_names = "Target R\U00B2",
                    x_name = "Sample size", y_name = "Averaged R2",
                    spu_x_shift = 1.5,
                    colors = ggcols,
@@ -1418,24 +1182,22 @@ tbl_perf %>%
                          legend.position="top")
                    )) 
 ```
-
-
 
 ## Variable selection
 
 ### Variable inclusion
 
 ```{r}
-#| fig-cap: "Population C with a linearly increasing proportion of zero-inflation of up to 75%"
+#| fig-cap: "OGM C with a linearly increasing proportion of zero-inflation of up to 75%"
 tbl_perf %>%
-  dplyr::select(population, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, npeps.est) %>%
-  filter(population %in% "C" & propzi == 0.75 & revzi == TRUE) %>%
+  dplyr::select(OGM, UDdepen, n, epslvl, propzi, struczero, model,  npeps.est) %>%
+  filter(OGM %in% "C" & propzi == 0.75) %>%
   mutate(n = to_factor(n)) %>%
-  arrange(model, penalty) %>%
+  arrange(model) %>%
   pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = npeps.est, names_from = model) %>%
   nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "struczero",
                    steps_y_base = -25, steps_y_height = 5, 
-                   steps_names = "Residual variance",
+                   steps_names = "Target R\U00B2",
                    x_name = "Sample size", y_name = "Averaged number of incuded peptides",
                    spu_x_shift = 1.5,
                    colors = ggcols,
@@ -1453,16 +1215,16 @@ tbl_perf %>%
 ```
 
 ```{r}
-#| fig-cap: "Population C with a linearly increasing proportion of zero-inflation of up to 25%"
+#| fig-cap: "OGM C with a linearly increasing proportion of zero-inflation of up to 25%"
 tbl_perf %>%
-  dplyr::select(population, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, npeps.est) %>%
-  filter(population %in% "C"  & propzi == 0.25 & revzi == TRUE ) %>%
+  dplyr::select(OGM, UDdepen, n, epslvl, propzi, struczero, model,  npeps.est) %>%
+  filter(OGM %in% "C"  & propzi == 0.25) %>%
   mutate(n = to_factor(n)) %>%
-  arrange(model, penalty) %>%
+  arrange(model) %>%
   pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = npeps.est, names_from = model) %>%
   nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "struczero",
                    steps_y_base = -25, steps_y_height = 5, 
-                   steps_names = "Residual variance",
+                   steps_names = "Target R\U00B2",
                    x_name = "Sample size", y_name = "Averaged number of incuded peptides",
                    spu_x_shift = 1.5,
                    colors = ggcols,
@@ -1478,7 +1240,6 @@ tbl_perf %>%
                          legend.position="top")
                    )) 
 ```
-
 
 ### Discovery rates
 
@@ -1486,16 +1247,16 @@ tbl_perf %>%
 #### TPDR
 
 ```{r}
-#| fig-cap: "Population C with a denearly increasing proportion of zero-inflation starting with 75%"
+#| fig-cap: "OGM C with a denearly increasing proportion of zero-inflation starting with 75%"
 tbl_allsel %>%
-  dplyr::select(population, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, TPDR) %>%
-  filter(population %in% "C" & propzi == 0.75 & revzi == TRUE) %>%
+  dplyr::select(OGM, UDdepen, n, epslvl, propzi, struczero, model,  TPDR) %>%
+  filter(OGM %in% "C" & propzi == 0.75) %>%
   mutate(n = to_factor(n)) %>%
-  arrange(model, penalty) %>%
+  arrange(model) %>%
   pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = TPDR, names_from = model) %>%
   nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "struczero",
                    steps_y_base = -0.1, steps_y_height = 0.025, 
-                   steps_names = "Residual variance",
+                   steps_names = "Target R\U00B2",
                    x_name = "Sample size", y_name = "True-postive discovery rate",
                    spu_x_shift = 1.5,
                    colors = ggcols,
@@ -1515,16 +1276,16 @@ tbl_allsel %>%
 #### TNDR
 
 ```{r}
-#| fig-cap: "Population C with a denearly increasing proportion of zero-inflation starting with 75%"
+#| fig-cap: "OGM C with a denearly increasing proportion of zero-inflation starting with 75%"
 tbl_allsel %>%
-  dplyr::select(population, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, TNDR) %>%
-  filter(population %in% "C" & propzi == 0.75 & revzi == TRUE) %>%
+  dplyr::select(OGM, UDdepen, n, epslvl, propzi, struczero, model,  TNDR) %>%
+  filter(OGM %in% "C" & propzi == 0.75) %>%
   mutate(n = to_factor(n)) %>%
-  arrange(model, penalty) %>%
+  arrange(model) %>%
   pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = TNDR, names_from = model) %>%
   nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "struczero",
                    steps_y_base = -0.1, steps_y_height = 0.025, 
-                   steps_names = "Residual variance",
+                   steps_names = "Target R\U00B2",
                    x_name = "Sample size", y_name = "True-postive discovery rate",
                    spu_x_shift = 1.5,
                    colors = ggcols,
@@ -1544,16 +1305,16 @@ tbl_allsel %>%
 #### FPDR
 
 ```{r}
-#| fig-cap: "Population C with a denearly increasing proportion of zero-inflation starting with 75%"
+#| fig-cap: "OGM C with a denearly increasing proportion of zero-inflation starting with 75%"
 tbl_allsel %>%
-  dplyr::select(population, UDdepen, n, epslvl, propzi, struczero, revzi, model, penalty, FPDR) %>%
-  filter(population %in% "C" & propzi == 0.75 & revzi == TRUE) %>%
+  dplyr::select(OGM, UDdepen, n, epslvl, propzi, struczero, model,  FPDR) %>%
+  filter(OGM %in% "C" & propzi == 0.75) %>%
   mutate(n = to_factor(n)) %>%
-  arrange(model, penalty) %>%
+  arrange(model) %>%
   pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = FPDR, names_from = model) %>%
   nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "struczero",
                    steps_y_base = -0.1, steps_y_height = 0.025, 
-                   steps_names = "Residual variance",
+                   steps_names = "Target R\U00B2",
                    x_name = "Sample size", y_name = "True-postive discovery rate",
                    spu_x_shift = 1.5,
                    colors = ggcols,
@@ -1573,16 +1334,16 @@ tbl_allsel %>%
 #### FNDR
 
 ```{r}
-#| fig-cap: "Population C with a denearly increasing proportion of zero-inflation starting with 75%"
+#| fig-cap: "OGM C with a denearly increasing proportion of zero-inflation starting with 75%"
 tbl_allsel %>%
-  dplyr::select(population, UDdepen, n, epslvl, propzi, struczero,  revzi, model, penalty, FNDR) %>%
-  filter(population %in% "C" & propzi == 0.75 & revzi == TRUE) %>%
+  dplyr::select(OGM, UDdepen, n, epslvl, propzi, struczero, model,  FNDR) %>%
+  filter(OGM %in% "C" & propzi == 0.75) %>%
   mutate(n = to_factor(n)) %>%
-  arrange(model, penalty) %>%
+  arrange(model) %>%
   pivot_wider(id_cols = c(UDdepen, n, epslvl, struczero), values_from = FNDR, names_from = model) %>%
   nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "struczero",
                    steps_y_base = -0.1, steps_y_height = 0.025, 
-                   steps_names = "Residual variance",
+                   steps_names = "Target R\U00B2",
                    x_name = "Sample size", y_name = "False-negative discovery rate",
                    spu_x_shift = 1.5,
                    colors = ggcols,

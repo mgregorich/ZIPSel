@@ -29,122 +29,584 @@ source(here::here("src","functions_aux.R"))
 #source(here::here("src","setup.R"))
 
 pacman::p_load(ggplot2, parallel, future.apply, stringr, kableExtra,
-               openxlsx, dplyr, tidyverse, simdata, looplot, gt)
+               openxlsx, dplyr, tidyverse, simdata, looplot, gt, ggtext)
 
 # Paths
 out.path <- "output"
-sim.date <- "2023-11-13"
+sim.date <- "2023_final"
 sim.file <- paste0("sim_", sim.date,"/")
 sim.path <- here::here(out.path, sim.file)
-ggcols <- c("black", "grey40","forestgreen","goldenrod2", "deepskyblue3","royalblue3", "darkred")
-methnames <- c("oracle", "ridge-oracle","lasso", "ridge", "ridge-lasso", "lasso-ridge", "ridge-garrote")
+ggcols <- c("black", "grey40", "#D55E00","#E69F00", "#56B4E9", "#0072B2",  "#009E73")
+methnames <- c("oracle-OLS", "oracle-ridge","lasso", "ridge", "lasso-ridge", "ridge-lasso",  "ridge-garrote")
 # Read in results
 tbl_res <- readRDS(here::here(sim.path, "tbl_results_perf.rds"))
 
 tbl_perf <- tbl_res$tbl_perf  %>% 
-  mutate(model = fct_relevel(model, methnames))
+         mutate(model = fct_relevel(model, methnames)) 
 tbl_varsel <- tbl_res$tbl_varsel %>% 
-  mutate(model = fct_relevel(model, methnames))
+         mutate(model = fct_relevel(model, methnames)) 
 tbl_allsel <- tbl_res$tbl_allsel %>% 
-  mutate(model = fct_relevel(model, methnames))
-tbl_groupsel <- tbl_res$tbl_groupsel%>% 
-  mutate(model = fct_relevel(model, methnames))
+         mutate(model = fct_relevel(model, methnames)) 
+tbl_groupsel <- tbl_res$tbl_groupsel %>% 
+         mutate(model = fct_relevel(model, methnames)) 
+
+
+tbl_res_iters <- readRDS(here::here(sim.path, "tbl_results_iters.rds"))
+tbl_perf_iters <- tbl_res_iters$tbl_iters_perf %>% 
+         mutate(model = fct_relevel(model, methnames)) 
+
+```
+
+```{r}
+tmp <- tbl_perf_iters %>%
+  group_by(OGM, n, UDdepen, epslvl, propzi, struczero, i) %>%
+  mutate(relRMSPE.best = RMSPE/min(RMSPE)) %>%
+  ungroup() %>%
+    group_by(OGM, n, UDdepen, epslvl, propzi, struczero, model) %>%
+  summarise("relRMSPEbest.est" = mean(relRMSPE.best, na.rm = T), "relRMSPEbest.med" = median(relRMSPE.best, na.rm = T),
+            "relRMSPEbest.sd" = sd(RMSPE, na.rm = T),
+              "relRMSPEbest.lo" = quantile(relRMSPE.best, 0.05, na.rm = T), "relRMSPEbest.up" = quantile(relRMSPE.best, 0.95, na.rm = T))
 ```
 
 # Predictive capabilities
-## Population A
+
+## General
+
 ```{r}
 tbl_perf %>%
-  filter(n==100 & epslvl %in% "moderate" & struczero %in% "0.66" & revzi == TRUE & population == "A" & model != "oracle") %>%
-  mutate(RMSPE.est = ifelse(UDdepen == "U", RMSPE.est/10, RMSPE.est),
-         RMSPE.lo = ifelse(UDdepen == "U", RMSPE.lo/10, RMSPE.lo),
-         RMSPE.up = ifelse(UDdepen == "U", RMSPE.up/10, RMSPE.up))%>%
-  ggplot(aes(x=propzi, y=RMSPE.est, colour = model, group = model, ymin = RMSPE.lo, ymax = RMSPE.up)) +
-    geom_point() + 
-    geom_line() +
-    scale_y_continuous(name="RMSPE") +
-    geom_errorbar(width=0.05) +
-    scale_color_manual(values = ggcols[-1]) +
-    facet_grid(~ UDdepen) +
-    theme_bw()  +
-    theme(text = element_text(size=16), strip.text = element_text(size=18))
-
+  dplyr::select(OGM, UDdepen, n, epslvl, propzi, struczero,  model, RMSPE.est) %>%
+  filter(struczero ==0.66 & propzi == 0.75 &  model != "oracle-OLS") %>%
+  mutate(n = to_factor(n),
+         epslvl = fct_recode(epslvl, "1"="none", "0.6"="moderate", "0.3"="high"),
+         RMSPE.est = ifelse(UDdepen=="U", RMSPE.est/10, RMSPE.est),
+         OGM = paste0("OGM = ", OGM)) %>%
+  arrange(model) %>%
+  pivot_wider(id_cols = c(OGM, UDdepen, n, epslvl), values_from = RMSPE.est, names_from = model) %>%
+  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "OGM",
+                   steps_y_base = 0.75, steps_y_height = 0.1, 
+                   steps_names = "Target R\U00B2",
+                   x_name = "Sample size", y_name = "RMSPE",
+                   spu_x_shift = 1.5,
+                   grid_labeller = labeller(.rows = label_value, .cols=label_value),
+                   colors = ggcols[-1],
+                   steps_values_annotate = TRUE, steps_annotation_size = 2.75,
+                   hline_intercept = 1,
+                   y_expand_add = c(0.2, 0.15),
+                   post_processing = list(
+                       add_custom_theme = list(
+                         text=element_text(size = 14),
+                           axis.text.x = element_text(size = 14,
+                                                      angle = -90,
+                                                      vjust = 0.5),
+                         legend.position="right")
+                   )) 
+ggsave(file = paste0(here::here("output", sim.file, "fig_sim_rmspe.tiff")),
+       width=2.5*100, height=2*100, units="mm", dpi=350, compression = "lzw")
 ```
 
 ```{r}
 tbl_perf %>%
-  filter(n==100 & epslvl %in% "moderate" & struczero %in% "0.66" & revzi == TRUE & population == "A" & !model %in% c("oracle","ridge")) %>%
+  dplyr::select(OGM, UDdepen, n, epslvl, propzi, struczero,  model, relRMSPEbest.est) %>%
+  filter(struczero ==0.66 & propzi == 0.75 &  !model %in% c("oracle-OLS", "oracle-ridge")) %>%
+  mutate(n = to_factor(n),
+         epslvl = fct_recode(epslvl, "1"="none", "0.6"="moderate", "0.3"="high"),
+         OGM = paste0("OGM = ", OGM)) %>%
+  arrange(model) %>%
+  pivot_wider(id_cols = c(OGM, UDdepen, n, epslvl), values_from = relRMSPEbest.est, names_from = model) %>%
+  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "OGM",
+                   steps_y_base = 0.75, steps_y_height = 0.1, 
+                   steps_names = "Target R\U00B2",
+                   x_name = "Sample size", y_name = "Relative RMSPE",
+                   spu_x_shift = 1.5,
+                   colors = ggcols[-c(1,2)],
+                   steps_values_annotate = TRUE, steps_annotation_size = 2.75,
+                   hline_intercept = 1,
+                   grid_labeller = labeller(.rows = label_value, .cols=label_value),
+                   y_expand_add = c(0.2, 0.15),
+                   post_processing = list(
+                       add_custom_theme = list(
+                         text=element_text(size = 14),
+                           axis.text.x = element_text(size = 14,
+                                                      angle = -90,
+                                                      vjust = 0.5),
+                         legend.position="right")
+                   )) 
+ggsave(file = paste0(here::here("output", sim.file, "fig_sim_relrmspe.tiff")),
+       width=2.5*100, height=2*100, units="mm", dpi=350, compression = "lzw")
+```
 
+```{r}
+tbl_perf %>%
+  group_by(OGM, n, epslvl, UDdepen, struczero, propzi) %>%
+  ungroup() %>%
+  dplyr::select(OGM, UDdepen, n, epslvl, propzi, struczero, revzi, model, relRMSPE.est) %>%
+  filter(struczero == 0.33 & propzi == 0.25 & revzi == FALSE & epslvl != "none" & !model %in% c("oracle-OLS", "oracle-ridge")) %>%
+  mutate(n = to_factor(n),
+         epslvl = fct_recode(epslvl, "0.6"="moderate", "0.3"="high"),
+         struczero = ifelse(struczero == 0.66, "2/3", "1/3"),
+         OGM = paste0("OGM = ", OGM)) %>%
+  arrange(model) %>%
+  pivot_wider(id_cols = c(UDdepen, n, epslvl, OGM), values_from = relRMSPE.est, names_from = model) %>%
+  rename("UD dependency"=UDdepen) %>%
+  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UD dependency" , 
+                   grid_rows = "OGM",
+                   steps_y_base = 0.96, steps_y_height = 0.0025, 
+                   steps_names = "Target R\U00B2" ,
+                   x_name = "Sample size", y_name = "Relative RMSPE",
+                   ylim = c(1, 1.2), y_breaks = seq(1,1.2,0.05),
+                   spu_x_shift = 1.5,
+                   grid_labeller = labeller(.rows = label_value, .cols=label_value),
+                   colors = ggcols[-c(1,2)],
+                   steps_values_annotate = TRUE, steps_annotation_size = 2.75,
+                   hline_intercept = 1,
+                   y_expand_add = c(0.075, 0.025),
+                   post_processing = list(
+                       add_custom_theme = list(
+                         text=element_text(size = 14),
+                           axis.text.x = element_text(size = 11,
+                                                      angle = -90,
+                                                      vjust = 0.5),
+                         
+                         legend.position="right")
+                   )) 
+ggsave(file = paste0(here::here("output", sim.file, "fig_sim_relrmspe_reduced.tiff")),
+       width=2.25*100, height=1.5*100, units="mm", dpi=350, compression = "lzw")
+ggsave(file = paste0(here::here("output", sim.file, "fig1_paper.tiff")),
+       width=2.25*100, height=1.5*100, units="mm", dpi=350, compression = "lzw")
+```
+
+
+```{r}
+tbl_perf_iters %>%
+  group_by(OGM, n, epslvl, UDdepen, struczero, propzi) %>%
+  ungroup() %>%
+  dplyr::select(OGM, UDdepen, n, epslvl, propzi, struczero, revzi, model, CS) %>%
+  filter(struczero == 0.33 & propzi == 0.25 & revzi == FALSE & epslvl != "none" & !model %in% c("oracle-OLS", "oracle-ridge")) %>%
+  mutate(n = paste0("n = ",to_factor(n)),
+         epslvl = fct_recode(epslvl, "0.6"="moderate", "0.3"="high"),
+         struczero = ifelse(struczero == 0.66, "2/3", "1/3"),
+         CS = abs(1-CS)) %>%
+  arrange(model) %>%
+  ggplot(aes(x=OGM, y=CS, fill=model)) +
+    geom_hline(yintercept=0, linetype="dashed", color = "black") +
+    geom_boxplot(width=0.5, outlier.alpha = 0.5) + 
+   scale_fill_manual(name="Method", values = ggcols[-c(1,2)]) +
+    scale_y_continuous(name="Calibration slope discrepancy", limits=c(0,1)) +
+    scale_x_discrete("OGM")+
+   facet_grid(UDdepen~n) +
+    theme_bw()  +
+    theme(text = element_text(size=16), strip.text = element_text(size=16))
+  ggsave(file = paste0(here::here("output", sim.file, "fig_sim_relRMSPEbest_box.tiff")),
+       width=2.5*100, height=1.5*100, units="mm", dpi=350, compression = "lzw")
+```
+
+```{r}
+tbl_perf %>%
+  dplyr::select(OGM, UDdepen, n, epslvl, propzi, struczero,  model, CS.est) %>%
+  filter(struczero ==0.66 & propzi == 0.75 &  !model %in% c("oracle-ridge", "oracle-OLS")) %>%
+#  mutate(RMSPE.est = ifelse(UDdepen == "U", RMSPE.est/10, RMSPE.est)) %>%
+  mutate(n = to_factor(n),
+         epslvl = fct_recode(epslvl, "1"="none", "0.6"="moderate", "0.3"="high"),
+         OGM = paste0("OGM = ", OGM)) %>%
+  arrange(model) %>%
+  pivot_wider(id_cols = c(OGM, UDdepen, n, epslvl), values_from = CS.est, names_from = model) %>%
+  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "OGM",
+                   steps_y_base = 0.6, steps_y_height = 0.025, 
+                   steps_names = "Target R\U00B2",
+                   x_name = "Sample size", y_name = "Calibration slope",
+                   spu_x_shift = 1.5,
+                   grid_labeller = labeller(.rows = label_value, .cols=label_value),
+                   colors = ggcols[-c(1,2)],
+                   steps_values_annotate = TRUE, steps_annotation_size = 2.75,
+                   hline_intercept = 1,
+                   y_expand_add = c(0.075, 0.05),
+                   post_processing = list(
+                       add_custom_theme = list(
+                         text=element_text(size = 16),
+                           axis.text.x = element_text(size = 14,
+                                                      angle = -90,
+                                                      vjust = 0.5),
+                         
+                         legend.position="right")
+                   )) 
+ggsave(file = paste0(here::here("output", sim.file, "fig_sim_cs.tiff")),
+       width=2.5*100, height=2*100, units="mm", dpi=350, compression = "lzw")
+```
+
+```{r}
+tbl_perf %>%
+  dplyr::select(OGM, UDdepen, n, epslvl, propzi, struczero,  model, R2.est) %>%
+  filter(struczero ==0.66 & propzi == 0.75 &  model != "oracle-OLS") %>%
+#  mutate(RMSPE.est = ifelse(UDdepen == "U", RMSPE.est/10, RMSPE.est)) %>%
+  mutate(n = to_factor(n),
+         epslvl = fct_recode(epslvl, "1"="none", "0.6"="moderate", "0.3"="high"),
+         OGM = paste0("OGM = ", OGM)) %>%
+  arrange(model) %>%
+  pivot_wider(id_cols = c(OGM, UDdepen, n, epslvl), values_from = R2.est, names_from = model) %>%
+  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "OGM",
+                   steps_y_base = -0.1, steps_y_height = 0.025, 
+                   steps_names = "Target R\U00B2",
+                   x_name = "Sample size", y_name = "R\U00B2",
+                   spu_x_shift = 1.5,
+                   grid_labeller = labeller(.rows = label_value, .cols=label_value),
+                   colors = ggcols[-1],
+                   steps_values_annotate = TRUE, steps_annotation_size = 3,
+                   hline_intercept = 0,
+                   ylim = c(0,1),
+                   y_expand_add = c(0.25, 0.075),
+                   post_processing = list(
+                       add_custom_theme = list(
+                         text=element_text(size = 16),
+                           axis.text.x = element_text(size = 14,
+                                                      angle = -90,
+                                                      vjust = 0.5),
+                         
+                         legend.position="right")
+                   )) 
+ggsave(file = paste0(here::here("output", sim.file, "fig_sim_r2.tiff")),
+       width=2.5*100, height=2*100, units="mm", dpi=350, compression = "lzw")
+```
+
+```{r}
+tbl_perf %>%
+  dplyr::select(OGM, UDdepen, n, epslvl, propzi, struczero,  model, extime.est, extime.med, extime.lo, extime.up) %>%
+  filter(struczero ==0.66 & propzi == 0.75 & epslvl == "moderate" &
+           OGM =="A" & UDdepen == "U=D") %>%
+  mutate(n = to_factor(n),
+         epslvl = fct_recode(epslvl, "1"="none", "0.6"="moderate", "0.3"="high"),
+         OGM = paste0("OGM = ", OGM),
+         extime.med = extime.med,
+         extime.lo = extime.lo,
+         extime.up=extime.up) %>%
+  arrange(model) %>%
+  ggplot(aes(x=n, y=extime.med, group=model, col=model)) +
+  geom_point() +
+  geom_line() +
+  geom_errorbar(aes(ymin = extime.lo, ymax=  extime.up), width=0.05) + 
+  scale_x_discrete(expand = c(0.05,0.05),"Sample size") +
+  scale_y_continuous("Execution time (in seconds)") +
+  scale_color_manual("Method", values = ggcols) +
+  theme_bw()
+
+ggsave(file = paste0(here::here("output", sim.file, "fig_sim_extime_reduced.tiff")),
+       width=1.75*100, height=0.75*100, units="mm", dpi=350, compression = "lzw")
+```
+
+```{r}
+tbl_perf_iters %>%
+  dplyr::select(OGM, UDdepen, n, epslvl, propzi, struczero, model, relRMSPE.or) %>%
+  filter(struczero == 0.33 & propzi == 0.75 &  epslvl == "moderate" & model != "oracle-OLS" & n==200) %>%
+  mutate(n = to_factor(n),
+         epslvl = fct_recode(epslvl, "1"="none", "0.6"="moderate", "0.3"="high"),
+         OGM = paste0("OGM = ", OGM)) %>%
+  arrange(model) %>%
+  ggplot(aes(x=model, y=relRMSPE.or, col=model)) +
+  geom_hline(yintercept = 1, col="black", linetype="dashed") +
+  geom_boxplot(outlier.alpha = 0.3) +
+  scale_color_manual(values=ggcols[-1]) +
+  scale_y_continuous("Relative RMSPE", limits = c(1,1.2)) +
+  scale_x_discrete("Sample size") +
+  facet_grid(UDdepen~OGM, scales="free_y") +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 1, hjust=1, size=10))
+  
+ggsave(file = paste0(here::here("output", sim.file, "fig_sim_relrmspe_box_or_reduced.tiff")),
+       width=2*100, height=1.25*100, units="mm", dpi=350, compression = "lzw")
+```
+
+
+# Predictor inclusion
+
+```{r}
+tbl_perf %>%
+  dplyr::select(OGM, UDdepen, n, epslvl, propzi, struczero,  model, npeps.est) %>%
+  filter(struczero ==0.66 & propzi == 0.75 &  model != "oracle-OLS") %>%
+  mutate(n = to_factor(n),
+         epslvl = fct_recode(epslvl, "1"="none", "0.6"="moderate", "0.3"="high"),
+         OGM = paste0("OGM = ", OGM)) %>%
+  arrange(model) %>%
+  pivot_wider(id_cols = c(OGM, UDdepen, n, epslvl), values_from = npeps.est, names_from = model) %>%
+  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "OGM",
+                   steps_y_base = -30, steps_y_height = 2, 
+                   steps_names = "Target R\U00B2",
+                   x_name = "Sample size", y_name = "Number of selected predictors",
+                   spu_x_shift = 1.5,
+                   grid_labeller = labeller(.rows = label_value, .cols=label_value),
+                   colors = ggcols[-1],
+                   steps_values_annotate = TRUE, steps_annotation_size = 2.75,
+                   hline_intercept = 0,
+                   y_expand_add = c(40, 20),
+                   post_processing = list(
+                       add_custom_theme = list(
+                         text=element_text(size = 14),
+                           axis.text.x = element_text(size = 14,
+                                                      angle = -90,
+                                                      vjust = 0.5),
+                         legend.position="right")
+                   )) 
+ggsave(file = paste0(here::here("output", sim.file, "fig_sim_npeps.tiff")),
+       width=2.5*100, height=2*100, units="mm", dpi=350, compression = "lzw")
+```
+
+```{r}
+tbl_perf %>%
+  filter(n==100 & epslvl %in% "moderate" & struczero %in% "0.66" & !model %in% c("oracle-OLS","ridge")) %>%
+  mutate(OGM = paste0("OGM = ", OGM)) %>%
   ggplot(aes(x=propzi, y=npeps.est, colour = model, group = model)) +
     geom_point() + 
     geom_line() +
-    scale_y_continuous(name="Number of included peptides") +
+    scale_y_continuous(name="Number of selected predictors") +
     scale_color_manual(values = ggcols[-c(1,4)]) +
-    facet_grid(~ UDdepen) +
+    facet_grid(OGM~ UDdepen) +
     theme_bw()  +
     theme(text = element_text(size=16), strip.text = element_text(size=18))
 
 ```
 
+```{r}
+tbl_perf_iters %>%
+  filter(n==400 & epslvl %in% "moderate" & struczero %in% "0.33" & propzi==0.75 & model != "oracle-OLS") %>%
+  mutate(intercept=ifelse(OGM %in% "B", 20, 100),
+         OGM = paste0("OGM = ", OGM))%>%
+  ggplot(aes(x=model, y=npeps, colour=model)) +
+    geom_boxplot(width=0.5, outlier.alpha = 0.3) + 
+    scale_y_continuous(name="Number of selected predictors") +
+    scale_x_discrete("")+
+    scale_color_manual("Method",values = ggcols[-1]) +
+    facet_grid(OGM~ UDdepen) +
+    theme_bw()  +
+    geom_hline(aes(yintercept=intercept), linetype="dashed", color = "black") +
+    theme(text = element_text(size=14), strip.text = element_text(size=14),
+          axis.text.x = element_text(angle = 45, vjust = 1, hjust=1, size=10))
+ggsave(file = paste0(here::here("output", sim.file, "fig_sim_npeps_box_zi75.tiff")),
+       width=2.5*100, height=1.5*100, units="mm", dpi=350, compression = "lzw")
+ggsave(file = paste0(here::here("output", sim.file, "fig2_paper.tiff")),
+       width=2.5*100, height=1.5*100, units="mm", dpi=350, compression = "lzw")
+```
 
 ```{r}
 tbl_perf %>%
-  dplyr::select(population, UDdepen, n, epslvl, propzi, struczero,  revzi, model, penalty, relRMSPE.est) %>%
-  filter(struczero ==0.66 & propzi == 0.75 & revzi ==FALSE & model != "oracle") %>%
-#  mutate(RMSPE.est = ifelse(UDdepen == "U", RMSPE.est/10, RMSPE.est)) %>%
-  mutate(n = to_factor(n)) %>%
-  arrange(model, penalty) %>%
-  pivot_wider(id_cols = c(population, UDdepen, n, epslvl), values_from = relRMSPE.est, names_from = model) %>%
-  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "population",
-                   steps_y_base = 0.75, steps_y_height = 0.05, 
-                   steps_names = "Residual variance",
-                   x_name = "Sample size", y_name = "Relative RMSPE across simulation replicates",
+  filter(epslvl %in% "high" & struczero %in% "0.33" & propzi==0.75 & !model %in% c("oracle-OLS", "oracle-ridge", "ridge")) %>%
+  mutate(intercept=ifelse(OGM %in% "B", 20, 100),
+         OGM = paste0("OGM = ", OGM),
+         n = to_factor(n))%>%
+  ggplot(aes(x=n, y=npeps.med, colour=model, group=model)) +
+    geom_line() + 
+    geom_point() +
+    scale_y_continuous(name="Number of selected predictors") +
+    scale_x_discrete("Sample size") +
+    scale_color_manual("Method",values = ggcols[-c(1,2,4)]) +
+    facet_grid(OGM~ UDdepen) +
+    theme_bw()  +
+    geom_hline(aes(yintercept=intercept), linetype="dashed", color = "black") +
+    theme(text = element_text(size=16), strip.text = element_text(size=18),
+          axis.text.x = element_text(angle = 45, vjust = 1, hjust=1, size=10))
+ggsave(file = paste0(here::here("output", sim.file, "fig_sim_npeps_line_zi75.tiff")),
+       width=2.5*100, height=1.5*100, units="mm", dpi=350, compression = "lzw")
+```
+
+```{r}
+tbl_perf_iters %>%
+  filter(n==400 & epslvl %in% "moderate" & model == c("ridge-lasso", "ridge-garrote") & struczero == 0.33) %>%
+  mutate(intercept=ifelse(OGM %in% "B", 20, 100)) %>%
+  pivot_wider(id_cols=c(i, n,epslvl, struczero, propzi, OGM, UDdepen), names_from = model, values_from = npeps) %>%
+  mutate(delta_npeps = `ridge-lasso` - `ridge-garrote`,
+         n = paste0("N = ", n),
+         propzi = c(paste0("p<sub>max</sub> = ", propzi))) %>%
+  ggplot(aes(x=OGM, y=delta_npeps, fill=UDdepen)) +
+    geom_hline(yintercept=0, linetype="dashed", color = "black") +
+    geom_boxplot(width=0.5, outlier.alpha = 0.5, position=position_dodge(0.55)) + 
+   scale_fill_manual(name="UD dependency", values = c("grey85", "grey65", "grey40")) +
+    scale_y_continuous(name=expression(q[s](ridge-lasso)- q[s](ridge-garrote))) +
+    scale_x_discrete("OGM")+
+   facet_grid(~propzi) +
+    theme_bw()  +
+    theme(text = element_text(size=16), strip.text = ggtext::element_markdown())
+  ggsave(file = paste0(here::here("output", sim.file, "fig_sim_npeps_rlasso_vs_rgar.tiff")),
+       width=2.5*100, height=1.25*100, units="mm", dpi=350, compression = "lzw")
+
+```
+
+```{r}
+tbl_perf_iters %>%
+  filter(n==200 & epslvl %in% "none" & struczero %in% "0.33" & propzi==0.25 & model != "oracle-OLS") %>%
+  mutate(intercept=ifelse(OGM %in% "B", 20, 100),
+         OGM = paste0("OGM = ", OGM))%>%
+  ggplot(aes(x=model, y=npeps, color=model)) +
+    geom_boxplot(outlier.alpha = 0.2, alpha=0.5, width=0.5) + 
+    #geom_jitter(alpha = 0.25, width = 0.1) +
+    scale_y_continuous(name="Number of selected predictors") +
+    scale_x_discrete("")+
+    scale_color_manual("Method",values = ggcols[-1]) +
+    facet_grid(OGM~ UDdepen) +
+    theme_bw()  +
+    geom_hline(aes(yintercept=intercept), linetype="dashed", color = "black") +
+    theme(text = element_text(size=16), strip.text = element_text(size=18),
+          axis.text.x = element_text(angle = 45, vjust = 1, hjust=1, size=10))
+ggsave(file = paste0(here::here("output", sim.file, "fig_sim_npeps_box_zi25.tiff")),
+       width=2.5*100, height=1.5*100, units="mm", dpi=350, compression = "lzw")
+```
+
+```{r}
+#| fig-cap: "OGM B with a linearly increasing proportion of zero-inflation of up to 75%"
+tbl_perf %>%
+  dplyr::select(OGM, UDdepen, n, epslvl, propzi, struczero,  model, npeps.est) %>%
+  filter(struczero==0.33 & propzi == 0.75 & model != "oracle-OLS" ) %>%
+  mutate(n = to_factor(n),
+         epslvl = fct_recode(epslvl, "1"="none", "0.6"="moderate", "0.3"="high"),
+         OGM = paste0("OGM = ", OGM)) %>%
+  arrange(model) %>%
+  pivot_wider(id_cols = c(UDdepen, n, epslvl, OGM), values_from = npeps.est, names_from = model) %>%
+  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "OGM",
+                   steps_y_base = -25, steps_y_height = 5, 
+                   steps_names = "Target R\U00B2",
+                   x_name = "Sample size", y_name = "Number of selected predictors",
                    spu_x_shift = 1.5,
+                   grid_labeller = labeller(.rows = label_value, .cols=label_value),
                    colors = ggcols[-1],
                    steps_values_annotate = TRUE, steps_annotation_size = 2.5,
                    hline_intercept = 0,
-                   y_expand_add = c(0.15, 0.15),
+                   y_expand_add = c(30, 15),
                    post_processing = list(
                        add_custom_theme = list(
                          text=element_text(size = 14),
                            axis.text.x = element_text(size = 14,
                                                       angle = -90,
                                                       vjust = 0.5),
-                         legend.position="top")
+                         legend.position="right")
                    )) 
-ggsave(file = paste0(here::here("output", sim.file, "fig_sim_relrmspe.tiff")),
-       width=2*100, height=1.5*100, units="mm", dpi=350, compression = "lzw")
+ggsave(file = paste0(here::here("output", sim.file, "fig_sim_npeps.tiff")),
+       width=2.5*100, height=1.5*100, units="mm", dpi=350, compression = "lzw")
 ```
 
-
-
 ```{r}
-tbl_perf %>%
-  dplyr::select(population, UDdepen, n, epslvl, propzi, struczero,  revzi, model, penalty, RMSPE.est) %>%
-  filter(struczero ==0.66 & propzi == 0.75 & revzi ==FALSE & model != "oracle") %>%
-  mutate(RMSPE.est = ifelse(UDdepen == "U", RMSPE.est/10, RMSPE.est)) %>%
-  mutate(n = to_factor(n)) %>%
-  arrange(model, penalty) %>%
-  pivot_wider(id_cols = c(population, UDdepen, n, epslvl), values_from = RMSPE.est, names_from = model) %>%
-  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "population",
-                   steps_y_base = -1.5, steps_y_height = 0.25, 
-                   steps_names = "Residual variance",
-                   x_name = "Sample size", y_name = "RMSPE across simulation replicates",
+#| fig-cap: "OGM B with a linearly increasing proportion of zero-inflation of up to 75%"
+tbl_allsel %>%
+  dplyr::select(OGM, UDdepen, n, epslvl, propzi, struczero,  model, TPDR) %>%
+  filter(struczero==0.33 & propzi == 0.75 & model != "oracle-OLS" ) %>%
+  mutate(n = to_factor(n),
+         epslvl = fct_recode(epslvl, "1"="none", "0.6"="moderate", "0.3"="high"),
+         OGM = paste0("OGM = ", OGM)) %>%
+  arrange(model) %>%
+  pivot_wider(id_cols = c(UDdepen, n, epslvl, OGM), values_from = TPDR, names_from = model) %>%
+  nested_loop_plot(x = "n", steps = "epslvl", grid_cols ="UDdepen" , grid_rows = "OGM",
+                   steps_y_base = -0.1, steps_y_height = 0.05, 
+                   steps_names = "Target R\U00B2",
+                   x_name = "Sample size", y_name = "True-positive discovery rate",
                    spu_x_shift = 1.5,
+                   grid_labeller = labeller(.rows = label_value, .cols=label_value),
                    colors = ggcols[-1],
                    steps_values_annotate = TRUE, steps_annotation_size = 2.5,
-                   hline_intercept = 0,
-                   y_expand_add = c(2, 0.5),
+                   hline_intercept = 0, y_breaks = seq(0,1,0.25),
+                   y_expand_add = c(0.15,0.05),
                    post_processing = list(
                        add_custom_theme = list(
                          text=element_text(size = 14),
                            axis.text.x = element_text(size = 14,
                                                       angle = -90,
                                                       vjust = 0.5),
-                         legend.position="top")
+                         legend.position="right")
                    )) 
-ggsave(file = paste0(here::here("output", sim.file, "fig_sim_relrmspe.tiff")),
+ggsave(file = paste0(here::here("output", sim.file, "fig_sim_tpdr.tiff")),
+       width=2.5*100, height=1.5*100, units="mm", dpi=350, compression = "lzw")
+```
+
+```{r}
+tbl_perf_iters %>%
+  filter(OGM == "A" & epslvl %in% "none" & struczero %in% "0.33" & propzi==0.25 & model != "oracle-OLS") %>%
+  mutate(n=paste0("N = ", n)) %>%
+  ggplot(aes(x=model, y=extime, color=model)) +
+    geom_boxplot(outlier.alpha = 0.2, alpha=0.5, width=0.5) + 
+    scale_y_continuous(name="Computation time [in s]") +
+    scale_x_discrete("")+
+    scale_color_manual("Method",values = ggcols[-1]) +
+    facet_grid(n~UDdepen, scales="free_y") +
+    theme_bw()  +
+    geom_hline(yintercept = 0, linetype="dashed", color = "black") +
+    theme(text = element_text(size=16), strip.text = element_text(size=18),
+          axis.text.x = element_text(angle = 45, vjust = 1, hjust=1, size=10))
+ggsave(file = paste0(here::here("output", sim.file, "fig_sim_extime.tiff")),
+       width=2.5*100, height=1.5*100, units="mm", dpi=350, compression = "lzw")
+```
+
+# Predictor selection
+
+```{r}
+tbl_varsel %>%
+    filter(n == 200 & epslvl %in% "none" & struczero %in% "0.33" & UDdepen == "U=D" & propzi==0.75 & 
+             !model %in% c("oracle-OLS", "ridge")) %>%
+  mutate(ind = as.numeric(str_remove_all(varname, "V")),
+         group = ifelse(ind < 51, "Group 1", ifelse(ind < 101, "Group 2", ifelse(ind <151, "Group 3", "Group 4"))),
+         OGM = paste0("OGM = ", OGM)) %>%
+  ggplot(aes(x=ind, y=vif, color=model, shape=model)) +
+  geom_point(size=0.9, alpha=0.75) +
+  scale_y_continuous("Predictor inclusion frequency") +
+  scale_x_continuous("Predictor index") +
+  scale_color_manual("Method", values = ggcols[c(2,3,5:7)]) +
+  scale_shape_manual("Method", values=c(4,19,19,19,19)) +
+  theme_bw() +
+  facet_grid(OGM~group, scales="free_x") +
+  theme(tex = element_text(size=14), axis.text.x = element_text(angle = 90, vjust = 1, hjust=1, size=10))
+ggsave(file = paste0(here::here("output", sim.file, "fig_sim_vif.tiff")),
+       width=2.5*100, height=1.5*100, units="mm", dpi=350, compression = "lzw")
+```
+
+```{r}
+tbl_varsel %>%
+    filter(OGM == "A" & n == 200 & epslvl %in% "none" & struczero %in% "0.33" & UDdepen == "U=D" & propzi==0.75 & 
+             !model %in% c("oracle-ridge","oracle-OLS", "ridge")) %>%
+  mutate(ind = as.numeric(str_remove_all(varname, "V")),
+         group = ifelse(ind < 51, "Group 1", ifelse(ind < 101, "Group 2", ifelse(ind <151, "Group 3", "Group 4"))),
+         OGM = paste0("OGM = ", OGM)) %>%
+  ggplot(aes(x=ind, y=vif, color=model)) +
+  geom_point(size=0.9, alpha=0.75) +
+  scale_y_continuous("Predictor inclusion frequency", lim=c(0,1)) +
+  scale_x_continuous("Predictor index") +
+  scale_color_manual("Method", values = ggcols[c(3,5:7)]) +
+  ggtitle("OGM A") +
+  theme_bw() +
+  facet_grid(model~group, scales="free_x") +
+  theme(text = element_text(size=14), axis.text.x = element_text(angle = 90, vjust = 1, hjust=1, size=10), plot.title = element_text(hjust=0.5))
+ggsave(file = paste0(here::here("output", sim.file, "fig_sim_vif_ogmA.tiff")),
        width=2*100, height=1.5*100, units="mm", dpi=350, compression = "lzw")
 ```
 
+```{r}
+tbl_varsel %>%
+    filter(OGM == "B" & n == 200 & epslvl %in% "none" & struczero %in% "0.33" & UDdepen == "U=D" & propzi==0.75 & 
+             !model %in% c("oracle-ridge","oracle-OLS", "ridge")) %>%
+  mutate(ind = as.numeric(str_remove_all(varname, "V")),
+         group = ifelse(ind < 51, "Group 1", ifelse(ind < 101, "Group 2", ifelse(ind <151, "Group 3", "Group 4"))),
+         OGM = paste0("OGM = ", OGM)) %>%
+  ggplot(aes(x=ind, y=vif, color=model)) +
+  geom_point(size=0.9, alpha=0.75) +
+  scale_y_continuous("Predictor inclusion frequency", lim=c(0,1)) +
+  scale_x_continuous("Predictor index") +
+  scale_color_manual("Method", values = ggcols[c(3,5:7)]) +
+  ggtitle("OGM B") +
+  theme_bw() +
+  facet_grid(model~group, scales="free_x") +
+  theme(text = element_text(size=14), axis.text.x = element_text(angle = 90, vjust = 1, hjust=1, size=10), plot.title = element_text(hjust=0.5))
+ggsave(file = paste0(here::here("output", sim.file, "fig_sim_vif_ogmB.tiff")),
+       width=2*100, height=1.5*100, units="mm", dpi=350, compression = "lzw")
+```
 
+```{r}
+tbl_varsel %>%
+    filter(OGM == "C" & n == 200 & epslvl %in% "none" & struczero %in% "0.33" & UDdepen == "U=D" & propzi==0.75 & 
+             !model %in% c("oracle-ridge","oracle-OLS", "ridge")) %>%
+  mutate(ind = as.numeric(str_remove_all(varname, "V")),
+         group = ifelse(ind < 51, "Group 1", ifelse(ind < 101, "Group 2", ifelse(ind <151, "Group 3", "Group 4"))),
+         OGM = paste0("OGM = ", OGM)) %>%
+  ggplot(aes(x=ind, y=vif, color=model)) +
+  geom_point(size=0.9, alpha=0.75) +
+  scale_y_continuous("Predictor inclusion frequency", lim=c(0,1)) +
+  scale_x_continuous("Predictor index") +
+  scale_color_manual("Method", values = ggcols[c(3,5:7)]) +
+  ggtitle("OGM C") +
+  theme_bw() +
+  facet_grid(model~group, scales="free_x") +
+  theme(text = element_text(size=14), axis.text.x = element_text(angle = 90, vjust = 1, hjust=1, size=10), plot.title = element_text(hjust=0.5))
+ggsave(file = paste0(here::here("output", sim.file, "fig_sim_vif_ogmC.tiff")),
+       width=2*100, height=1.5*100, units="mm", dpi=350, compression = "lzw")
+```
