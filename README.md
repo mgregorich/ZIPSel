@@ -1,34 +1,27 @@
-<h1 align="center">  The non-negative Garrote for 'too' many zero-inflated predictors </h1>
+<h1 align="center">  Prediction modelling with many correlated and zero-inflated predictors  </h1>
 
+
+This repository contains the R code to reproduce the results in the paper titled "_Prediction modelling with many correlated and zero-inflated predictors: assessing a nonnegative garrote approach_", which is accessible as a preprint version on arXiv. Access it [here](arXiv link).
  
-## Background
-Variable selection can be problematic in data obtained from mass spectronomy due to the large number of missing values, posing statistical challenges for standard analysis procedures. The available information on a given variable is usually split into two components: i) a binary indicator of the absence/presence of the entity in the sample and ii) its log2-transformed intensity if detected. We propose an extension of the non-negative Garrote (Breiman 1995) for variable selection in the presence of zero-inflation in high-dimensional data. 
-
-## Methods
-A simulation study is presented in order to assess the performance of difference variable selection procedures mainly based on penalized likelihood estimation when 'too' many zero-inflated predictors are available for prediction modelling.
+## Overview
+Simulation study to examine the performance of the five regularized regression approach in terms of predictive accuracy and predictor selection in the presence of many correlated and zero-inflated predictors. The objective was to identify an approach with good predictive accuracy and the ability to select a parsimonious set of predictors.
 
 The following methods are implemented:
 
-+ the nonnegative garrote (ridge-garrote)
-+ ridge-lasso penalization
-+ lasso-ridge penalization
-+ network-based group penalization
-+ multiple univariable modelling ( no penalization)
++ ridge regression
++ lasso regression
++ ridge-garrote approach
++ ridge-lasso approach
++ lasso-ridge approach
 
-<br>
+## Contents
 
-**Implementation of the nonnegative Garrote (by Georg Heinze)**
+This repository is organized in the following manner:
 
-Protogarrote: R software to fit prediction models with or without interactions using high-throughput proteomic biomarkers 
+- `src`: contains the code and R functions for the simulation study
+- `auxiliary`: contains supplementary R Markdown reports focusing on specific aspects of the simulation study
+- `example`: contains the code for a real-life case study on predicting kidney function using peptidomic features (data not provided)
 
-The following functions are available:
-
-* `protogarrote` ... fits  a linear or logistic model with proteomics and clinical predictor variable. May include an interaction of a variable with the proteomics. Uses internal validation to determine the best values of lambda1 and lambda2.
-* `coefficients.protogarrote` ... shows the estimated coefficients at the optimal lambda1, lambda2
-* `predict.protogarrote` ... predicts outcomes using a `protogarrote` object and new data
-* `plot.coefficients.protogarrote` ... shows the estimated coefficients for the proteomics by means of a plot and a table.
-
-<br>
 
 ## Installation
 
@@ -42,10 +35,6 @@ devtools::install_github("mgregorich/ZIPSel")
 ## Prerequisites
 
 The code uses the statistical software `R` (>= 4.2.3)
-
-## Disclaimer
-
-This repository is still in the development phase.
 
 
 ## References
