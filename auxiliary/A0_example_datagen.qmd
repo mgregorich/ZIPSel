@@ -147,7 +147,7 @@ data_simA <- data_generation(dsgn = dsgn, OGM = scn_A $OGM, n = scn_A $n,
                             propzi = scn_A $propzi, revzi = scn_A $revzi, 
                             struczero = scn_A $struczero)
 true_beta_A <- data_simA$data_coef %>%
-  mutate(OGM = "OGM A",
+  mutate(OGM = "OGM = A",
          ind = as.numeric(str_remove_all(var, "V")),
          group = rep(c("Group 1", "Group 2", "Group 3", "Group 4"), each=scn$p/ngroups))
 scn_B <- scenarios[250,]
@@ -157,7 +157,7 @@ data_simB <- data_generation(dsgn = dsgn, OGM = scn_B$OGM, n = scn_B$n,
                             propzi = scn_B$propzi, revzi = scn_B$revzi, 
                             struczero = scn_B$struczero)
 true_beta_B <- data_simB$data_coef %>%
-  mutate(OGM = "OGM B",
+  mutate(OGM = "OGM = B",
          ind = as.numeric(str_remove_all(var, "V")),
          group = rep(c("Group 1", "Group 2", "Group 3", "Group 4"), each=scn$p/ngroups))
 scn_C <- scenarios[450,]
@@ -167,7 +167,7 @@ data_simC <- data_generation(dsgn = dsgn, OGM = scn_C$OGM, n = scn_C$n,
                             propzi = scn_C$propzi, revzi = scn_C$revzi, 
                             struczero = scn_C$struczero)
 true_beta_C <- data_simC$data_coef %>%
-  mutate(OGM = "OGM C",
+  mutate(OGM = "OGM = C",
          ind = as.numeric(str_remove_all(var, "V")),
          group = rep(c("Group 1", "Group 2", "Group 3", "Group 4"), each=scn$p/ngroups))
 
@@ -179,7 +179,7 @@ true_beta_all %>%
   {if(scn$OGM=="B")geom_point()} +
   geom_line() +
   facet_grid(OGM~group, scales = "free_x") +
-  scale_x_continuous("Variable index") +
+  scale_x_continuous("Predictor index") +
   scale_y_continuous("Coefficient") +
   scale_linetype_manual(values = c(1,2)) +
   scale_color_manual(values=c("darkblue", "darkred")) +
@@ -235,8 +235,8 @@ pc1 <- ggplot(data = melted_cormat, aes(x=Var1, y=Var2, fill=value)) +
   scale_fill_gradient2(low = "blue", high = "red", mid = "white", 
                        midpoint = 0, limit = c(-1,1), space = "Lab", 
                        name="") +
-  scale_x_continuous("Candidate variables", expand=c(0,0)) +
-  scale_y_continuous("Candidate variables", expand=c(0,0)) +
+  scale_x_continuous("Candidate predictors", expand=c(0,0)) +
+  scale_y_continuous("Candidate predictors", expand=c(0,0)) +
   theme_bw() 
 
 melted_Xstruc <- melt(cor(data_sim$data_gen$X_struc)) %>%
@@ -326,7 +326,7 @@ The number of values that fall victim to being set to zero according to one of t
 true_beta %>%
   data.frame() %>%
   mutate(ind = as.numeric(str_remove_all(var, "V")),
-         group = rep(c("G1", "G2", "G3", "G4"), each=scn$p/ngroups)) %>%
+         group = rep(c("Group 1", "Group 2", "Group 3", "Group 4"), each=scn$p/ngroups)) %>%
   pivot_longer(cols=c(propzi, struczi, samplzi), names_to = "ZI", values_to = "prop") %>%
   mutate(ZI = fct_recode(ZI, "total"="propzi", "sampling"="samplzi", "structural"="struczi")) %>%
   ggplot(aes(x=ind, y=prop, group=ZI, col=ZI)) +
@@ -361,11 +361,11 @@ df_zi %>%
   data.frame() %>%
   pivot_longer(cols=c(propzi, struczi, samplzi), names_to = "ZI", values_to = "prop") %>%
   mutate(ZI = fct_recode(ZI, "total"="propzi", "sampling"="samplzi", "structural"="struczi")) %>%
-  mutate(OGM=paste0("OGM ", OGM)) %>%
+  mutate(OGM=paste0("OGM = ", OGM)) %>%
   ggplot(aes(x=ind, y=prop, group=ZI, col=ZI, linetype=ZI)) +
   geom_line() +
   facet_grid(OGM~group, scales = "free_x") +
-  scale_x_continuous("Variable index") +
+  scale_x_continuous("Predictor index") +
   scale_y_continuous("Proportion of zero-inflation", limits = c(0,1)) +
   scale_color_manual("Source of zero-inflation", values=c("black", "grey25", "grey55")) +
   scale_linetype_discrete("Source of zero-inflation") +
@@ -410,7 +410,7 @@ p3 <- data.frame("intensity" = c(data.obj$u)) %>%
   scale_y_continuous("Count") +
   theme_light() + 
   theme(plot.title = element_text(hjust=0.5)) +
-  ggtitle("Design variable U")
+  ggtitle("Component variable U")
 p4 <- data.frame("intensity" = to_factor(c(data.obj$d))) %>% 
   ggplot(aes(x = intensity)) + 
   geom_bar(col = "black", fill = "grey89") + 
@@ -418,12 +418,12 @@ p4 <- data.frame("intensity" = to_factor(c(data.obj$d))) %>%
   scale_y_continuous("Count") +
   theme_light()+
   theme(plot.title = element_text(hjust=0.5)) +
-  ggtitle("Design variable D")
+  ggtitle("Component variable D")
 
 p_all <- (p1 + p2 ) / ( p3 + p4 ) + plot_annotation(tag_levels = list(c('(A)', '(B)','(C1)', '(C2)')))
 p_all
 ggsave(file = here::here("output", "auxiliary","fig_design_vars_all.tiff"), plot=p_all,
-       width = 1.75*100, height = 1.5*100, units = "mm", dpi = 350, compression = "lzw")
+       width = 2.1*100, height = 1.5*100, units = "mm", dpi = 350, compression = "lzw")
 ```
 
 ```{r}

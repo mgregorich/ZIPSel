@@ -1,7 +1,7 @@
 <h1 align="center">  Prediction modelling with many correlated and zero-inflated predictors  </h1>
 
 
-This repository contains the R code to reproduce the results in the paper titled "_Prediction modelling with many correlated and zero-inflated predictors: assessing a nonnegative garrote approach_", which is accessible as a preprint version on arXiv. Access it [here](arXiv link).
+This repository contains the R code to reproduce the results in the paper titled "_Prediction modelling with many correlated and zero-inflated predictors: assessing a nonnegative garrote approach_", which is accessible as a preprint version on arXiv. Access it [here](https://arxiv.org/abs/2402.02064).
  
 ## Overview
 Simulation study to examine the performance of the five regularized regression approach in terms of predictive accuracy and predictor selection in the presence of many correlated and zero-inflated predictors. The objective was to identify an approach with good predictive accuracy and the ability to select a parsimonious set of predictors.
